@@ -23,7 +23,7 @@ git checkout -b 브랜치명 origin/develop
 
 ## 커밋 & 푸시
 ```bash
-git add src include
+git add NeuralNetworks
 git commit -m "(무엇을 변경했는지 한 줄)"
 git push -u origin HEAD
 ```
