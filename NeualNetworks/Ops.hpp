@@ -62,6 +62,7 @@ namespace vsnn {
 				}
 			}
 		}
+
 		static void AddRowBias(Matrix& Y, const Matrix& b) {
 			assert(b.Rows() == 1 && b.Cols() == Y.Cols());
 			for (i32 n = 0; n < Y.Rows(); ++n)
