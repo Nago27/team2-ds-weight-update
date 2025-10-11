@@ -8,12 +8,15 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+
 using namespace std;
 
 namespace vsnn {
 	using f32 = float;
 	using i32 = int32_t;
-
+	
+	//블록 사이즈 설정 (CPU마다 최적값이 다르므로 32, 64, 128 등 2^n으로 변경해가며 실행해봐야 함)
+	const int BLOCK = 128;
 
 	class Matrix {
 	private:
@@ -40,21 +43,29 @@ namespace vsnn {
 		inline const vector<f32>& Raw() const { return data_; }
 		inline vector<f32>& Raw() { return data_; }
 
-		//전치행렬
+		//전치행렬(처음 생성될 때나 업데이트 시에만 기존 행렬에서 전치 행렬로 복사, 그 외에는 기존 전치행렬 반환만)
 		const Matrix& Transposed() const {
 			if (!transpose_cache_ || transpose_dirty_) {
 				transpose_cache_ = std::make_unique<Matrix>(cols_, rows_);
 				Matrix& T = *transpose_cache_;
-				for (i32 i = 0; i < rows_; ++i) {
-					const f32* src = &data_[(size_t)i * cols_];
-					for (i32 j = 0; j < cols_; ++j)
-						T(j, i) = src[j];
+				int M = rows_, K = cols_;
+				for (i32 i0 = 0; i0 < rows_; i0 += BLOCK) {
+					int iMax = std::min(i0 + BLOCK, M);
+					for (i32 j0 = 0; j0 < cols_; j0 += BLOCK) {
+						int jMax = std::min(j0 + BLOCK, K);
+						for (i32 i = i0; i < iMax; ++i) {
+							const f32* src = &data_[(size_t)i * cols_];
+							for (i32 j = j0; j < jMax; ++j) T(j, i) = src[j];
+						}
+					}
 				}
+
 				transpose_dirty_ = false;
 			}
 			return *transpose_cache_;
 		}
-
+		void MarkDirty() { transpose_dirty_ = true; }
+		
 		Matrix(const Matrix& other) {
 			rows_ = other.rows_;
 			cols_ = other.cols_;
@@ -71,6 +82,6 @@ namespace vsnn {
 			transpose_dirty_ = true;
 			return *this;
 		}
-		void MarkDirty() { transpose_dirty_ = true; }
+		
 	};
 }

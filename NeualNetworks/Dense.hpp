@@ -33,7 +33,7 @@ namespace vsnn {
 				float acc = 0.0f; for (i32 i = 0; i < X.Rows(); ++i) acc += dY(i, j); gb_(0, j) = acc;
 			}
 			// dX = dY * W^T
-			Ops::MatMul(dY, W_.Transposed(), dX);
+			Ops::MatMul_NT(dY, W_, dX);
 		}
 		void ZeroGrad() override { gW_.Fill(0.0f); gb_.Fill(0.0f); }
 		// Step는 Trainer에서 StudentUpdater로 처리하므로 no-op

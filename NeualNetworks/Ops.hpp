@@ -11,14 +11,12 @@
 using namespace std;
 
 namespace vsnn {
-	//블록 사이즈 설정 (CPU마다 최적값이 다르므로 32, 64, 128 등 2^n으로 변경해가며 실행해봐야 함)
-	const int BLOCK = 128;
-
 	class Ops {
 	public:
+		//AVX2 명령어를 지원하는 경우 SIMD를 이용해 8개의 요소를 동시에 처리 지원하지 않을경우 기본적인 스칼라 연산
 		static inline float Dot(const float* a, const float* b, int len) {
 
-#ifdef __AVX2__
+		#ifdef __AVX2__
 			int k = 0;
 			__m256 acc = _mm256_setzero_ps();
 			for (; k + 8 <= len; k += 8) {
@@ -31,11 +29,11 @@ namespace vsnn {
 			float s = tmp[0] + tmp[1] + tmp[2] + tmp[3] + tmp[4] + tmp[5] + tmp[6] + tmp[7];
 			for (; k < len; ++k) s += a[k] * b[k];
 			return s;
-#else
+		#else
 			float s = 0.0f;
 			for (int k = 0; k < len; ++k) s += a[k] * b[k];
 			return s;
-#endif
+		#endif
 		}
 		// Y = X * W with shapes: (N,in) * (in,out) = (N,out)
 		static void MatMul(const Matrix& A, const Matrix& B, Matrix& C) {
@@ -55,6 +53,30 @@ namespace vsnn {
 							const float* a = &A.Raw()[(size_t)i * K + k0];
 							for (int j = j0; j < jMax; ++j) {
 								const float* b = &Bt.Raw()[(size_t)j * Bt.Cols() + k0];
+								C(i, j) += Dot(a, b, kMax - k0);
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// 행렬곱 연산에서 뒤의 행렬이 전치행렬인 경우 굳이 전치행렬을 계산하지 않고 기존 행렬로 계산하는 것이 더 빠름
+		static void MatMul_NT(const Matrix& A, const Matrix& B, Matrix& C) {
+			int M = A.Rows(), K = A.Cols(), N = B.Rows(); //B가 아닌 B^T를 곱할 것이므로 N=B.Rows();
+			// B^T를 곱할 것이므로 행렬 전치 필요 X
+			C.Reset(M, N);
+
+			for (int i0 = 0; i0 < M; i0 += BLOCK) {
+				int iMax = std::min(i0 + BLOCK, M);
+				for (int j0 = 0; j0 < N; j0 += BLOCK) {
+					int jMax = std::min(j0 + BLOCK, N);
+					for (int k0 = 0; k0 < K; k0 += BLOCK) {
+						int kMax = std::min(k0 + BLOCK, K);
+						for (int i = i0; i < iMax; ++i) {
+							const float* a = &A.Raw()[(size_t)i * K + k0];
+							for (int j = j0; j < jMax; ++j) {
+								const float* b = &B.Raw()[(size_t)j * B.Cols() + k0];
 								C(i, j) += Dot(a, b, kMax - k0);
 							}
 						}
