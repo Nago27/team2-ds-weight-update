@@ -49,6 +49,10 @@ namespace vsnn {
 				transpose_cache_ = std::make_unique<Matrix>(cols_, rows_);
 				Matrix& T = *transpose_cache_;
 				int M = rows_, K = cols_;
+
+			#ifdef _OPENMP
+				#pragma omp parallel for
+			#endif 
 				for (i32 i0 = 0; i0 < rows_; i0 += BLOCK) {
 					int iMax = std::min(i0 + BLOCK, M);
 					for (i32 j0 = 0; j0 < cols_; j0 += BLOCK) {

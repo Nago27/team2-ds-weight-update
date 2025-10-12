@@ -41,7 +41,9 @@ namespace vsnn {
 			//캐시 효율성 최적화를 위해 B 행렬 전치
 			const Matrix& Bt = B.Transposed();
 			C.Reset(M, N);
-
+		#ifdef _OPENMP
+			#pragma omp parallel for
+		#endif 
 			//캐시 블로킹을 통한 데이터 재사용률 극대화
 			for (int i0 = 0; i0 < M; i0 += BLOCK) {
 				int iMax = std::min(i0 + BLOCK, M);
@@ -66,7 +68,9 @@ namespace vsnn {
 			int M = A.Rows(), K = A.Cols(), N = B.Rows(); //B가 아닌 B^T를 곱할 것이므로 N=B.Rows();
 			// B^T를 곱할 것이므로 행렬 전치 필요 X
 			C.Reset(M, N);
-
+		#ifdef _OPENMP
+			#pragma omp parallel for
+		#endif 
 			for (int i0 = 0; i0 < M; i0 += BLOCK) {
 				int iMax = std::min(i0 + BLOCK, M);
 				for (int j0 = 0; j0 < N; j0 += BLOCK) {
@@ -91,6 +95,7 @@ namespace vsnn {
 			int num_cols = Y.Cols();
 			const float* b_ptr = &b.Raw()[0];
 			float* y_ptr = &Y.Raw()[0];
+
 			for (int n = 0; n < num_rows; ++n) {
 				float* y_ptr_ = y_ptr + num_cols * n;
 				int j = 0;
@@ -110,11 +115,9 @@ namespace vsnn {
 				}
 			}
 		}
+
 		static void ReLUForward(const Matrix& X, Matrix& Y) {
 			if (Y.Rows() != X.Rows() || Y.Cols() != X.Cols()) Y.Reset(X.Rows(), X.Cols());
-			for (i32 r = 0; r < X.Rows(); ++r)
-				for (i32 c = 0; c < X.Cols(); ++c)
-					Y(r, c) = (X(r, c) > 0.0f) ? X(r, c) : 0.0f; if (Y.Rows() != X.Rows() || Y.Cols() != X.Cols()) Y.Reset(X.Rows(), X.Cols());
 
 			const float* x_ptr = &X.Raw()[0];
 			float* y_ptr = &Y.Raw()[0];

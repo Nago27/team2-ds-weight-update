@@ -29,8 +29,12 @@ namespace vsnn {
 
 			// gb = sum_rows(dY)
 			if (gb_.Rows() != 1 || gb_.Cols() != W_.Cols()) gb_.Reset(1, W_.Cols());
+		#ifdef _OPENMP
+			#pragma omp parallel for
+		#endif
 			for (i32 j = 0; j < W_.Cols(); ++j) {
-				float acc = 0.0f; for (i32 i = 0; i < X.Rows(); ++i) acc += dY(i, j); gb_(0, j) = acc;
+				float acc = 0.0f; 
+				for (i32 i = 0; i < X.Rows(); ++i) acc += dY(i, j); gb_(0, j) = acc;
 			}
 			// dX = dY * W^T
 			Ops::MatMul_NT(dY, W_, dX);
