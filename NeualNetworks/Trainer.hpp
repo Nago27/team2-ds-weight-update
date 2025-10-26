@@ -33,11 +33,12 @@ namespace vsnn {
 	private:
 		static void SliceBatch(const Matrix& X, const vector<int>& y, int beg, int end, Matrix& Xb, vector<int>& yb) {
 			const int N = end - beg; const int D = X.Cols();
-			if (Xb.Rows() != N || Xb.Cols() != D) Xb.Reset(N, D);
+			if (Xb.Rows() != N || Xb.Cols() != D) Xb.Reset(N, D); // reuse buffer if same shape
 			yb.resize(N);
 			for (int i = 0; i < N; ++i) {
-				for (int d = 0; d < D; ++d) Xb(i, d) = X(beg + i, d);
-				yb[i] = y[beg + i];
+				const int src = beg + i;
+				copy_n(&X.Raw()[(size_t)src * D], D, &Xb.Raw()[(size_t)i * D]);
+				yb[i] = y[src];
 			}
 		}
 	public:
@@ -48,6 +49,9 @@ namespace vsnn {
 			vector<double> epoch_ms_list, update_ms_list;
 			float last_loss = 0.0f;
 
+			// Workspace: shuffled copy + batch buffers reused across the loop
+			Matrix Xs(X.Rows(), X.Cols()); vector<int> ys = y; // single shuffle copy per repeat
+			Matrix Xb; vector<int> yb; // reused per batch
 
 			for (int r = 0; r < cfg.repeats; ++r) {
 				// 셔플 인덱스
@@ -56,11 +60,11 @@ namespace vsnn {
 				shuffle(idx.begin(), idx.end(), rng);
 
 
-				// 셔플 데이터 복사 (간단 버전)
-				Matrix Xs(X.Rows(), X.Cols()); vector<int> ys = y;
+				// 셔플 데이터 복사 (materialize shuffled dataset once per repeat)
 				for (int i = 0; i < X.Rows(); ++i) {
-					for (int d = 0; d < X.Cols(); ++d) Xs(i, d) = X(idx[i], d);
-					ys[i] = y[idx[i]];
+					const int s = idx[i];
+					copy_n(&X.Raw()[(size_t)s * X.Cols()], X.Cols(), &Xs.Raw()[(size_t)i * X.Cols()]);
+					ys[i] = y[s];
 				}
 
 
@@ -73,21 +77,19 @@ namespace vsnn {
 					const int N = Xs.Rows();
 					for (int beg = 0; beg < N; beg += cfg.batch) {
 						const int end = min(N, beg + cfg.batch);
-						Matrix Xb; vector<int> yb;
+						// Matrix Xb; vector<int> yb;
 						SliceBatch(Xs, ys, beg, end, Xb, yb);
 
 
 						// FWD -> LOSS -> BWD
 						model.Forward(Xb, logits);
-						last_loss = CE.Forward(logits, yb);
-						CE.Backward(yb, dlogits);
+						last_loss = CE.ForwardBackward(logits, yb, dlogits); // fused pass produces dlogits
 						model.ZeroGrad();
 						model.Backward(dlogits);
 
 						TU.Tic();
-						Updater::Update(model, cfg.lr); // 
-						double up_ms = TU.TocMs();
-						sum_up_ms += up_ms;
+						Updater::Update(model, cfg.lr); 
+						sum_up_ms += TU.TocMs();
 					}
 					double ep_ms = T.TocMs();
 					if (e >= cfg.warmup) sum_epoch_ms += ep_ms; // 워밍업 제외

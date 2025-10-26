@@ -1,3 +1,4 @@
+
 // =============================
 // include/vsnn/Dense.hpp
 // =============================
@@ -46,7 +47,7 @@ namespace vsnn {
 				}
 			}
 		}
-		void ZeroGrad() override { gW_.Fill(0.0f); gb_.Fill(0.0f); }
+		void ZeroGrad() override { /* optional: keep; Backward overwrites gW/gb */ }
 		// Step는 Trainer에서 StudentUpdater로 처리하므로 no-op
 		void Step(float) override {}
 
