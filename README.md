@@ -18,12 +18,13 @@ git fetch origin
 
 ## 작업 브랜치 (develop에서 분기)
 ```bash
-git checkout -b 브랜치명 origin/develop
+git checkout -b (브랜치명) origin/develop
 ```
+이거 할때 기존 NeualNetworks 폴더 날라갈 수도 있어서 다른곳에 백업해뒀다가 해당 명령어 치고 복붙하시오
 
 ## 커밋 & 푸시
 ```bash
-git add NeuralNetworks
+git add NeualNetworks
 git commit -m "(무엇을 변경했는지 한 줄)"
 git push -u origin HEAD
 ```
