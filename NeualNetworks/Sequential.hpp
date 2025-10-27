@@ -33,7 +33,8 @@ namespace vsnn {
 			Matrix prev_d;  // 매 호출에서 레이어가 필요 시 Reset하므로 안전
 			for (int i = static_cast<int>(layers_.size()) - 1; i >= 0; --i) {
 				layers_[i]->Backward(acts_[i], cur_d, prev_d);
-				cur_d = prev_d;            // 여기선 복사/이동 없이도 OK (prev_d가 소유)
+				cur_d = move(prev_d); // 여기선 복사/이동 없이도 OK (prev_d가 소유)
+				prev_d = Matrix();
 			}
 		}
 		void ZeroGrad() { for (auto& L : layers_) L->ZeroGrad(); }

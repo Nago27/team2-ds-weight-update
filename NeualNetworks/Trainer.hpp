@@ -31,14 +31,16 @@ namespace vsnn {
 
 	class Trainer {
 	private:
-		static void SliceBatch(const Matrix& X, const vector<int>& y, int beg, int end, Matrix& Xb, vector<int>& yb) {
-			const int N = end - beg; const int D = X.Cols();
-			if (Xb.Rows() != N || Xb.Cols() != D) Xb.Reset(N, D); // reuse buffer if same shape
-			yb.resize(N);
-			for (int i = 0; i < N; ++i) {
-				const int src = beg + i;
-				copy_n(&X.Raw()[(size_t)src * D], D, &Xb.Raw()[(size_t)i * D]);
-				yb[i] = y[src];
+		static void SliceBatch(const Matrix& X, const std::vector<int>& y,
+			const vector<int>& idx, int beg, int end,
+			Matrix& Xb, vector<int>& yb) {
+			const int B = end - beg, D = X.Cols();
+			if (Xb.Rows() != B || Xb.Cols() != D) Xb.Reset(B, D);
+			yb.resize(B);
+			for (int i = 0; i < B; ++i) {
+				const int s = idx[beg + i];
+				copy_n(&X.Raw()[(size_t)s * D], D, &Xb.Raw()[(size_t)i * D]);
+				yb[i] = y[s];
 			}
 		}
 	public:
@@ -50,8 +52,8 @@ namespace vsnn {
 			float last_loss = 0.0f;
 
 			// Workspace: shuffled copy + batch buffers reused across the loop
-			Matrix Xs(X.Rows(), X.Cols()); vector<int> ys = y; // single shuffle copy per repeat
-			Matrix Xb; vector<int> yb; // reused per batch
+			Matrix Xb;
+			vector<int> yb; // reused per batch
 
 			for (int r = 0; r < cfg.repeats; ++r) {
 				// 셔플 인덱스
@@ -59,26 +61,16 @@ namespace vsnn {
 				iota(idx.begin(), idx.end(), 0);
 				shuffle(idx.begin(), idx.end(), rng);
 
-
-				// 셔플 데이터 복사 (materialize shuffled dataset once per repeat)
-				for (int i = 0; i < X.Rows(); ++i) {
-					const int s = idx[i];
-					copy_n(&X.Raw()[(size_t)s * X.Cols()], X.Cols(), &Xs.Raw()[(size_t)i * X.Cols()]);
-					ys[i] = y[s];
-				}
-
-
 				double sum_epoch_ms = 0.0; // 전체 에폭 시간 합
 				double sum_up_ms = 0.0; // 업데이트 시간만 합
 
-
 				for (int e = 0; e < cfg.epochs; ++e) {
 					T.Tic();
-					const int N = Xs.Rows();
+					const int N = X.Rows();
 					for (int beg = 0; beg < N; beg += cfg.batch) {
 						const int end = min(N, beg + cfg.batch);
 						// Matrix Xb; vector<int> yb;
-						SliceBatch(Xs, ys, beg, end, Xb, yb);
+						SliceBatch(X, y, idx, beg, end, Xb, yb);
 
 
 						// FWD -> LOSS -> BWD
