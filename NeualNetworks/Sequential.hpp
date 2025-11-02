@@ -30,6 +30,7 @@ namespace vsnn {
 			}
 			out = acts_.back();
 		}
+
 		void Backward(const Matrix& dOut) {
 			Matrix cur_d = dOut, prev_d;
 			for (int i = static_cast<int>(layers_.size()) - 1; i >= 0; --i) {

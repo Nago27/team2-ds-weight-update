@@ -45,12 +45,10 @@ namespace vsnn {
 				for (size_t t = 0; t < W.Raw().size(); ++t) {
 					W.Raw()[t] -= lr * gW.Raw()[t];
 				}
-				W.MarkDirty();
 				// b update
 				for (int j = 0; j < b.Cols(); ++j) {
 					b(0, j) -= lr * gb(0, j);
 				}
-				b.MarkDirty();
 			}
 		}
 	};

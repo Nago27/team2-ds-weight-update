@@ -23,7 +23,6 @@ namespace vsnn {
 		i32 rows_ = 0, cols_ = 0;
 		vector<f32> data_;
 		mutable std::unique_ptr<Matrix> transpose_cache_;
-		mutable bool transpose_dirty_ = true;
 	public:
 		Matrix() = default;
 		Matrix(i32 r, i32 c) { Reset(r, c); }
@@ -31,7 +30,6 @@ namespace vsnn {
 			rows_ = r; cols_ = c;
 			data_.assign((size_t)r * c, 0.0f);
 			transpose_cache_.reset();
-			transpose_dirty_ = true;
 		}
 		inline i32 Rows() const { return rows_; }
 		inline i32 Cols() const { return cols_; }
@@ -45,14 +43,10 @@ namespace vsnn {
 
 		//전치행렬(처음 생성될 때나 업데이트 시에만 기존 행렬에서 전치 행렬로 복사, 그 외에는 기존 전치행렬 반환만)
 		const Matrix& Transposed() const {
-			if (!transpose_cache_ || transpose_dirty_) {
 				transpose_cache_ = std::make_unique<Matrix>(cols_, rows_);
 				Matrix& T = *transpose_cache_;
 				int M = rows_, K = cols_;
 
-			#ifdef _OPENMP
-				#pragma omp parallel for
-			#endif 
 				for (i32 i0 = 0; i0 < rows_; i0 += BLOCK) {
 					int iMax = std::min(i0 + BLOCK, M);
 					for (i32 j0 = 0; j0 < cols_; j0 += BLOCK) {
@@ -63,29 +57,23 @@ namespace vsnn {
 						}
 					}
 				}
-
-				transpose_dirty_ = false;
-			}
 			return *transpose_cache_;
 		}
-		void MarkDirty() { transpose_dirty_ = true; }
 		
 		Matrix(const Matrix& other) {
 			rows_ = other.rows_;
 			cols_ = other.cols_;
 			data_ = other.data_;
 			transpose_cache_.reset();
-			transpose_dirty_ = true;
 		}
+
 		Matrix& operator=(const Matrix& other) {
 			if (this == &other) return *this;
 			rows_ = other.rows_;
 			cols_ = other.cols_;
 			data_ = other.data_;
 			transpose_cache_.reset();
-			transpose_dirty_ = true;
 			return *this;
 		}
-		
 	};
 }
