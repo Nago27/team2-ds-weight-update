@@ -1,6 +1,5 @@
 // =============================
-// include/vsnn/Matrix.hpp 
-// version 1.0 patced 10.26)
+// include/vsnn/Matrix.hpp
 // =============================
 #pragma once
 #include <vector>
@@ -15,25 +14,6 @@ namespace vsnn {
 	using f32 = float;
 	using i32 = int32_t;
 
-	// Lightweight non-owning view over a row-major 2D buffer
-	struct MatrixView {
-		f32* ptr = nullptr; // base pointer
-		i32 rows = 0, cols = 0;
-		i32 ld = 0;   // leading dimension (stride between rows), in elements
-		bool transposed = false;  // lazy-transpose flag
-
-		MatrixView() = default;
-		MatrixView(f32* p, i32 r, i32 c, i32 leading, bool t = false)
-			: ptr(p), rows(r), cols(c), ld(leading), transposed(t) {
-		}
-
-		inline f32& at(i32 r, i32 c) {
-			return transposed ? ptr[c * ld + r] : ptr[r * ld + c];
-		}
-		inline const f32& at(i32 r, i32 c) const {
-			return transposed ? ptr[c * ld + r] : ptr[r * ld + c];
-		}
-	};
 
 	class Matrix {
 	private:
@@ -55,8 +35,13 @@ namespace vsnn {
 		inline const vector<f32>& Raw() const { return data_; }
 		inline vector<f32>& Raw() { return data_; }
 
-		// Expose non-owning view (row-major, no transpose)
-		MatrixView View() { return MatrixView{ data_.data(), rows_, cols_, cols_, false }; }
-		MatrixView TView() { return MatrixView{ data_.data(), rows_, cols_, cols_, true }; }
+		// 추가 부분
+		inline float* RowPtr(i32 r) { return data_.data() + static_cast<size_t>(r) * cols_; }
+		inline const float* RowPtr(i32 r) const { return data_.data() + static_cast<size_t>(r) * cols_; }
+
+		void ResetNoInit(i32 r, i32 c) {
+			rows_ = r; cols_ = c;
+			data_.resize(static_cast<size_t>(r) * c);
+		}
 	};
 }

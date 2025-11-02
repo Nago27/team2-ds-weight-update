@@ -23,8 +23,10 @@ namespace vsnn {
 
 
 #pragma once
+#include <type_traits>
 #include "Sequential.hpp"
 #include "Dense.hpp"
+#include "Timer.hpp"
 
 
 namespace vsnn {
@@ -39,8 +41,14 @@ namespace vsnn {
 				if (!D) continue;
 				Matrix& W = D->WRef(); Matrix& gW = D->gWRef();
 				Matrix& b = D->bRef(); Matrix& gb = D->gbRef();
-				for (size_t t = 0; t < W.Raw().size(); ++t) W.Raw()[t] -= lr * gW.Raw()[t];
-				for (int j = 0; j < b.Cols(); ++j) b(0, j) -= lr * gb(0, j);
+				// W update
+				for (size_t t = 0; t < W.Raw().size(); ++t) {
+					W.Raw()[t] -= lr * gW.Raw()[t];
+				}
+				// b update
+				for (int j = 0; j < b.Cols(); ++j) {
+					b(0, j) -= lr * gb(0, j);
+				}
 			}
 		}
 	};

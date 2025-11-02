@@ -31,16 +31,13 @@ namespace vsnn {
 
 	class Trainer {
 	private:
-		static void SliceBatch(const Matrix& X, const std::vector<int>& y,
-			const vector<int>& idx, int beg, int end,
-			Matrix& Xb, vector<int>& yb) {
-			const int B = end - beg, D = X.Cols();
-			if (Xb.Rows() != B || Xb.Cols() != D) Xb.Reset(B, D);
-			yb.resize(B);
-			for (int i = 0; i < B; ++i) {
-				const int s = idx[beg + i];
-				copy_n(&X.Raw()[(size_t)s * D], D, &Xb.Raw()[(size_t)i * D]);
-				yb[i] = y[s];
+		static void SliceBatch(const Matrix& X, const vector<int>& y, int beg, int end, Matrix& Xb, vector<int>& yb) {
+			const int N = end - beg; const int D = X.Cols();
+			if (Xb.Rows() != N || Xb.Cols() != D) Xb.Reset(N, D);
+			yb.resize(N);
+			for (int i = 0; i < N; ++i) {
+				for (int d = 0; d < D; ++d) Xb(i, d) = X(beg + i, d);
+				yb[i] = y[beg + i];
 			}
 		}
 	public:
@@ -51,9 +48,6 @@ namespace vsnn {
 			vector<double> epoch_ms_list, update_ms_list;
 			float last_loss = 0.0f;
 
-			// Workspace: shuffled copy + batch buffers reused across the loop
-			Matrix Xb;
-			vector<int> yb; // reused per batch
 
 			for (int r = 0; r < cfg.repeats; ++r) {
 				// 셔플 인덱스
@@ -61,27 +55,39 @@ namespace vsnn {
 				iota(idx.begin(), idx.end(), 0);
 				shuffle(idx.begin(), idx.end(), rng);
 
+
+				// 셔플 데이터 복사 (간단 버전)
+				Matrix Xs(X.Rows(), X.Cols()); vector<int> ys = y;
+				for (int i = 0; i < X.Rows(); ++i) {
+					for (int d = 0; d < X.Cols(); ++d) Xs(i, d) = X(idx[i], d);
+					ys[i] = y[idx[i]];
+				}
+
+
 				double sum_epoch_ms = 0.0; // 전체 에폭 시간 합
 				double sum_up_ms = 0.0; // 업데이트 시간만 합
 
+
 				for (int e = 0; e < cfg.epochs; ++e) {
 					T.Tic();
-					const int N = X.Rows();
+					const int N = Xs.Rows();
 					for (int beg = 0; beg < N; beg += cfg.batch) {
 						const int end = min(N, beg + cfg.batch);
-						// Matrix Xb; vector<int> yb;
-						SliceBatch(X, y, idx, beg, end, Xb, yb);
+						Matrix Xb; vector<int> yb;
+						SliceBatch(Xs, ys, beg, end, Xb, yb);
 
 
 						// FWD -> LOSS -> BWD
 						model.Forward(Xb, logits);
-						last_loss = CE.ForwardBackward(logits, yb, dlogits); // fused pass produces dlogits
+						last_loss = CE.Forward(logits, yb);
+						CE.Backward(yb, dlogits);
 						model.ZeroGrad();
 						model.Backward(dlogits);
 
 						TU.Tic();
-						Updater::Update(model, cfg.lr); 
-						sum_up_ms += TU.TocMs();
+						Updater::Update(model, cfg.lr); // 
+						double up_ms = TU.TocMs();
+						sum_up_ms += up_ms;
 					}
 					double ep_ms = T.TocMs();
 					if (e >= cfg.warmup) sum_epoch_ms += ep_ms; // 워밍업 제외
