@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <random>
 #include <numeric>
+#include <cstring> // memcpy
 #include "Sequential.hpp"
 #include "Loss.hpp"
 #include "Timer.hpp"
@@ -31,13 +32,20 @@ namespace vsnn {
 
 	class Trainer {
 	private:
-		static void SliceBatch(const Matrix& X, const vector<int>& y, int beg, int end, Matrix& Xb, vector<int>& yb) {
-			const int N = end - beg; const int D = X.Cols();
-			if (Xb.Rows() != N || Xb.Cols() != D) Xb.Reset(N, D);
+		// 배치 복사 비용 줄이기 (메모리 이동 최적화) <- replace
+		static void SliceBatchFast(const Matrix& Xs, const vector<int>& ys,
+			int beg, int end, Matrix& Xb, vector<int>& yb)
+		{
+			const int N = end - beg, D = Xs.Cols();
+			if (Xb.Rows() != N || Xb.Cols() != D) Xb.ResetNoInit(N, D);
 			yb.resize(N);
+			// 행 단위 memcpy (연속 메모리 가정: row-major)
+			const size_t row_bytes = static_cast<size_t>(D) * sizeof(float);
 			for (int i = 0; i < N; ++i) {
-				for (int d = 0; d < D; ++d) Xb(i, d) = X(beg + i, d);
-				yb[i] = y[beg + i];
+				const float* src = &Xs.Raw()[static_cast<size_t>(beg + i) * D];
+				float* dst = &Xb.Raw()[static_cast<size_t>(i) * D];
+				memcpy(dst, src, row_bytes);
+				yb[i] = ys[beg + i];
 			}
 		}
 	public:
@@ -67,14 +75,16 @@ namespace vsnn {
 				double sum_epoch_ms = 0.0; // 전체 에폭 시간 합
 				double sum_up_ms = 0.0; // 업데이트 시간만 합
 
+				Matrix Xb;
+				vector<int> yb;
 
 				for (int e = 0; e < cfg.epochs; ++e) {
 					T.Tic();
 					const int N = Xs.Rows();
 					for (int beg = 0; beg < N; beg += cfg.batch) {
 						const int end = min(N, beg + cfg.batch);
-						Matrix Xb; vector<int> yb;
-						SliceBatch(Xs, ys, beg, end, Xb, yb);
+						// REPLACE: SliceBatch -> SliceBatchFast
+						SliceBatchFast(Xs, ys, beg, end, Xb, yb);
 
 
 						// FWD -> LOSS -> BWD

@@ -19,21 +19,18 @@ namespace vsnn {
 			b_.Fill(0.0f); gW_.Fill(0.0f); gb_.Fill(0.0f);
 		}
 
-		// Dense.hpp — 교체: Forward
+		// Forward: bias 융합 커널(행 접근) 사용 권장
 		void Forward(const Matrix& X, Matrix& Y) override {
-			// Y = X * W + b  (루프 융합)
-			Ops::MatMulBias(X, W_, b_, Y);
+			Ops::MatMulBias(X, W_, b_, Y);  // 이 함수도 행-우선 누적 형태여야 함
 		}
 
-		// Dense.hpp — 교체: Backward
 		void Backward(const Matrix& X, const Matrix& dY, Matrix& dX) override {
-			// gW = X^T * dY  (outer-product 누적 커널)
-			Ops::MatMulT_A(X, dY, gW_);
-
-			// gb = sum_rows(dY)
+			// gW, gb 한 패스 누적을 쓰고 있었다면 그것 유지 OR 아래 2줄로 나눠도 됨
+			// 1) gW 타일형 누적
+			Ops::MatMulT_A_Tiled(X, dY, gW_);          // <-- REPLACE: 타일형으로 교체
+			// 2) gb = sum_rows(dY) (또는 기존의 동시 누적 커널 유지)
 			Ops::SumRows(dY, gb_);
-
-			// dX = dY * W^T  (전치 포함 커널)
+			// 3) dX = dY * W^T (행 연속 접근 커널 그대로)
 			Ops::MatMulT_B(dY, W_, dX);
 		}
 
