@@ -47,7 +47,7 @@ namespace vsnn {
 				}
 				// b update
 				for (int j = 0; j < b.Cols(); ++j) {
-					b(0, j) -= lr * gb(0, j);
+					b.Raw()[j] -= lr * gb.Raw()[j];
 				}
 			}
 		}

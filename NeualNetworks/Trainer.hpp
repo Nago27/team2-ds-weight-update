@@ -35,8 +35,16 @@ namespace vsnn {
 			const int N = end - beg; const int D = X.Cols();
 			if (Xb.Rows() != N || Xb.Cols() != D) Xb.Reset(N, D);
 			yb.resize(N);
+			float* xb = &Xb.Raw()[0];
+			const float* x = &X.Raw()[beg * D];
+			int ND = N * D;
+
+			for (int i = 0; i < ND; ++i) {
+				xb[i] = x[i];
+				
+			}
+
 			for (int i = 0; i < N; ++i) {
-				for (int d = 0; d < D; ++d) Xb(i, d) = X(beg + i, d);
 				yb[i] = y[beg + i];
 			}
 		}
