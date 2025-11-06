@@ -23,7 +23,7 @@ namespace vsnn {
 			Ops::MatMul1(X, W_, Y);
 			Ops::AddRowBias(Y, b_);
 		}
-		void Backward(const Matrix& X, const Matrix& dY, Matrix& dX) override {
+		void Backward(const Matrix& X, const Matrix& dY, Matrix& dX, int i) override {
 			// gW = X^T * dY
 			Ops::MatMul2(X, dY, gW_);
 			// gb = sum_rows(dY)
@@ -35,7 +35,8 @@ namespace vsnn {
 				gb_(0, j) = acc;
 			}
 			// dX = dY * W^T
-			Ops::MatMul3(dY, W_, dX);
+			if(i!=0)
+				Ops::MatMul3(dY, W_, dX);
 		}
 		void ZeroGrad() override { gW_.Fill(0.0f); gb_.Fill(0.0f); }
 		// Step는 Trainer에서 StudentUpdater로 처리하므로 no-op
