@@ -131,39 +131,51 @@ namespace vsnn {
             if (C.Rows() != K || C.Cols() != N) C.Reset(K, N);
 
             unsigned int num_threads = std::thread::hardware_concurrency();
-            if (K < num_threads) num_threads = K;
+            if (M < num_threads) num_threads = M;
 
-            int rows_per_thread = (K + num_threads - 1) / num_threads;
+            std::vector<Matrix> C_local_list(num_threads);
+            for (int i = 0; i < num_threads; i++)
+                C_local_list[i].Reset(K, N);
+
+            int rows_per_thread = (M + num_threads - 1) / num_threads;
 
             std::atomic<int> tasks_remaining(num_threads);
 
             for (unsigned int t = 0; t < num_threads; ++t) {
                 int start_row = t * rows_per_thread;
-                int end_row = std::min(start_row + rows_per_thread, K);
+                int end_row = std::min(start_row + rows_per_thread, M);
 
                 if (start_row >= end_row) {
                     tasks_remaining.fetch_sub(1);
                     continue;
                 }
 
-                auto task = [&A, &B, &C, start_row, end_row, M, K, N, &tasks_remaining]() {
-                    for (int i = 0; i < M; ++i) {
+                auto task = [&A, &B, &C_local_list, start_row, end_row, K, N, t, &tasks_remaining]() {
+                    Matrix& C_local = C_local_list[t];
+                    for (int i = start_row; i < end_row; ++i) {
                         const float* a = &A.Raw()[(size_t)i * K];
                         const float* b = &B.Raw()[(size_t)i * N];
-                        for (int j = start_row; j < end_row; ++j) {
+                        for (int j = 0; j < K; ++j) {
                             if (a[j] == 0.0f) continue;
-                            float* c = &C.Raw()[(size_t)j * N];
+                            float* c = &C_local.Raw()[(size_t)j * N];
                             for (int k = 0; k < N; ++k) {
                                 c[k] += a[j] * b[k];
                             }
                         }
                     }
                     tasks_remaining.fetch_sub(1);
-                 };
+                    };
                 g_pool.enqueue(std::move(task));
             }
             while (tasks_remaining.load() > 0) {
                 std::this_thread::yield();
+            }
+
+            for (int i = 0; i < num_threads; ++i) {
+                const float* c_ = &C_local_list[i].Raw()[0];
+                float* c = &C.Raw()[0];
+                for (int j = 0; j < K * N; j++)
+                    c[j] += c_[j];
             }
         }
         // dX = dY * W^T
