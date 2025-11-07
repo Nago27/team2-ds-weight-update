@@ -31,21 +31,19 @@ namespace vsnn {
 
 	class Trainer {
 	private:
-		static void SliceBatch(const Matrix& X, const vector<int>& y, int beg, int end, Matrix& Xb, vector<int>& yb) {
+		static void SliceBatch(const Matrix& X, const vector<int>& y, const vector<int>& idx, int beg, int end, Matrix& Xb, vector<int>& yb) {
 			const int N = end - beg; const int D = X.Cols();
 			if (Xb.Rows() != N || Xb.Cols() != D) Xb.Reset(N, D);
 			yb.resize(N);
 			float* xb = &Xb.Raw()[0];
-			const float* x = &X.Raw()[beg * D];
-			int ND = N * D;
-
-			for (int i = 0; i < ND; ++i) {
-				xb[i] = x[i];
-				
-			}
+			const float* x = &X.Raw()[0];
 
 			for (int i = 0; i < N; ++i) {
-				yb[i] = y[beg + i];
+				int actual_row_idx = idx[beg + i];
+				const float* src_row = x + (size_t)actual_row_idx * D;
+				float* dst_row = xb + (size_t)i * D;
+				memcpy(dst_row, src_row, D * sizeof(float));
+				yb[i] = y[actual_row_idx];
 			}
 		}
 	public:
@@ -64,25 +62,17 @@ namespace vsnn {
 				shuffle(idx.begin(), idx.end(), rng);
 
 
-				// 셔플 데이터 복사 (간단 버전)
-				Matrix Xs(X.Rows(), X.Cols()); vector<int> ys = y;
-				for (int i = 0; i < X.Rows(); ++i) {
-					for (int d = 0; d < X.Cols(); ++d) Xs(i, d) = X(idx[i], d);
-					ys[i] = y[idx[i]];
-				}
-
-
 				double sum_epoch_ms = 0.0; // 전체 에폭 시간 합
 				double sum_up_ms = 0.0; // 업데이트 시간만 합
 
 
 				for (int e = 0; e < cfg.epochs; ++e) {
 					T.Tic();
-					const int N = Xs.Rows();
+					const int N = X.Rows();
 					for (int beg = 0; beg < N; beg += cfg.batch) {
 						const int end = min(N, beg + cfg.batch);
 						Matrix Xb; vector<int> yb;
-						SliceBatch(Xs, ys, beg, end, Xb, yb);
+						SliceBatch(X, y, idx, beg, end, Xb, yb);
 
 
 						// FWD -> LOSS -> BWD

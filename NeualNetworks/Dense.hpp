@@ -29,11 +29,14 @@ namespace vsnn {
 			// gb = sum_rows(dY)
 			if (gb_.Rows() != 1 || gb_.Cols() != W_.Cols()) gb_.Reset(1, W_.Cols());
 			
-			for (i32 j = 0; j < W_.Cols(); ++j) {
-				float acc = 0.0f; 
-				for (i32 i = 0; i < X.Rows(); ++i) acc += dY(i, j); 
-				gb_(0, j) = acc;
+			float* gb_ptr = &gb_.Raw()[0];
+			int num_cols = W_.Cols();
+			for (i32 i = 0; i < X.Rows(); ++i) {
+				const float* dY_ptr = &dY.Raw()[(size_t)i * num_cols];
+				for (i32 j = 0; j < num_cols; ++j)
+					gb_ptr[j] += dY_ptr[j];
 			}
+
 			// dX = dY * W^T
 			if(i!=0)
 				Ops::MatMul3(dY, W_, dX);

@@ -49,7 +49,6 @@ namespace vsnn {
             }
         }
 
-        // 소멸자: 모든 스레드를 안전하게 종료시킵니다.
         ~ThreadPool() {
             {
                 std::unique_lock<std::mutex> lock(queue_mutex);
@@ -131,8 +130,6 @@ namespace vsnn {
             int M = A.Rows(), K = A.Cols(), N = B.Cols();
             if (C.Rows() != K || C.Cols() != N) C.Reset(K, N);
 
-            
-
             unsigned int num_threads = std::thread::hardware_concurrency();
             if (K < num_threads) num_threads = K;
 
@@ -177,13 +174,11 @@ namespace vsnn {
 
             Matrix BT(K, N);
             for (i32 i = 0; i < N; ++i) {
-
                 const f32* src = &B.Raw()[(size_t)i * K];
                 for (i32 j = 0; j < K; ++j) BT(j, i) = src[j];
             }
 
             
-
             unsigned int num_threads = std::thread::hardware_concurrency();
             if (M < num_threads) num_threads = M;
 
