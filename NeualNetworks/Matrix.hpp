@@ -1,17 +1,38 @@
+// =============================
+// include/vsnn/Matrix.hpp
+// =============================
 #pragma once
-#include <Eigen/Dense>
+#include <vector>
+#include <algorithm>
+#include <cassert>
+#include <cstddef>
 #include <cstdint>
 
-namespace vsnn {
-    using f32 = float;
-    using i32 = int32_t;
+using namespace std;
 
-    // Matrix 타입을 Eigen의 동적 행렬에 대한 별칭(alias)으로 지정합니다.
-    // RowMajor는 C-스타일 배열처럼 행을 기준으로 데이터를 저장하여 다른 라이브러리와의 호환성을 높입니다.
-    using Matrix = Eigen::Matrix< //별칭 주의
-        f32,
-        Eigen::Dynamic,
-        Eigen::Dynamic,
-        Eigen::RowMajor
-    >;
-} //3차 커밋
+namespace vsnn {
+	using f32 = float;
+	using i32 = int32_t;
+
+
+	class Matrix {
+	private:
+		i32 rows_ = 0, cols_ = 0;
+		vector<f32> data_;
+	public:
+		Matrix() = default;
+		Matrix(i32 r, i32 c) { Reset(r, c); }
+		void Reset(i32 r, i32 c) {
+			rows_ = r; cols_ = c; data_.assign(static_cast<size_t>(r) * c, 0.0f);
+		}
+		inline i32 Rows() const { return rows_; }
+		inline i32 Cols() const { return cols_; }
+		inline f32* Data() { return data_.data(); }
+		inline const f32* Data() const { return data_.data(); }
+		inline f32& operator()(i32 r, i32 c) { return data_[static_cast<size_t>(r) * cols_ + c]; }
+		inline f32 operator()(i32 r, i32 c) const { return data_[static_cast<size_t>(r) * cols_ + c]; }
+		inline void Fill(f32 v) { fill(data_.begin(), data_.end(), v); }
+		inline const vector<f32>& Raw() const { return data_; }
+		inline vector<f32>& Raw() { return data_; }
+	};
+}

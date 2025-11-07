@@ -1,24 +1,24 @@
+// =============================
+// include/vsnn/Initializer.hpp
+// =============================
 #pragma once
 #include <random>
 #include "Matrix.hpp"
 
-namespace vsnn {
-    class Initializer {
-    public:
-        static void Uniform(Matrix& W, float scale = 0.01f, uint64_t seed = 42) {
-            std::mt19937_64 gen(seed);
-            std::uniform_real_distribution<float> dist(-scale, scale);
-            for (i32 i = 0; i < W.size(); ++i) {
-                *(W.data() + i) = dist(gen);
-            }
-        }
+using namespace std;
 
-        static void Normal(Matrix& W, float stddev = 0.01f, uint64_t seed = 42) {
-            std::mt19937_64 gen(seed);
-            std::normal_distribution<float> dist(0.0f, stddev);
-            for (i32 i = 0; i < W.size(); ++i) {
-                *(W.data() + i) = dist(gen);
-            }
-        }
-    };
+namespace vsnn {
+	class Initializer {
+	public:
+		static void Uniform(Matrix& W, float scale = 0.01f, uint64_t seed = 42) {
+			mt19937_64 gen(seed);
+			uniform_real_distribution<float> dist(-scale, scale);
+			for (auto& x : W.Raw()) x = dist(gen);
+		}
+		static void Normal(Matrix& W, float stddev = 0.01f, uint64_t seed = 42) {
+			mt19937_64 gen(seed);
+			normal_distribution<float> dist(0.0f, stddev);
+			for (auto& x : W.Raw()) x = dist(gen);
+		}
+	};
 }
