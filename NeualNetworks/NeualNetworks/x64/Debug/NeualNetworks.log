@@ -11,7 +11,7 @@ C:\Users\enwoo\source\repos\ssss\NeualNetworks\Ops.hpp(137,31): warning C4018: '
 C:\Users\enwoo\source\repos\ssss\NeualNetworks\Ops.hpp(174,31): warning C4018: '<': signed 또는 unsigned가 일치하지 않습니다.
   (소스 파일 'main.cpp'을(를) 컴파일하는 중)
   
-C:\Users\enwoo\source\repos\ssss\NeualNetworks\Ops.hpp(195,19): warning C4018: '<': signed 또는 unsigned가 일치하지 않습니다.
+C:\Users\enwoo\source\repos\ssss\NeualNetworks\Ops.hpp(193,19): warning C4018: '<': signed 또는 unsigned가 일치하지 않습니다.
   (소스 파일 'main.cpp'을(를) 컴파일하는 중)
   
   NeualNetworks.vcxproj -> C:\Users\enwoo\Source\Repos\ssss\NeualNetworks\x64\Debug\NeualNetworks.exe

@@ -5,10 +5,10 @@
 #include <cmath>
 #include <algorithm>
 #include <thread>
-#include<queue>
-#include<mutex>
-#include<condition_variable>
-#include<functional>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+#include <functional>
 #include "Matrix.hpp"
 
 using namespace std;
@@ -85,7 +85,7 @@ namespace vsnn {
         // Y = X * W
         static void MatMul1(const Matrix& A, const Matrix& B, Matrix& C) {
             int M = A.Rows(), K = A.Cols(), N = B.Cols();
-            if (C.Rows() != M || C.Cols() != N) C.Reset(M, N);
+            C.Reset(M, N);
 
             unsigned int num_threads = std::thread::hardware_concurrency();
             if (M < num_threads) num_threads = M;
@@ -181,8 +181,7 @@ namespace vsnn {
         // dX = dY * W^T
         static void MatMul3(const Matrix& A, const Matrix& B, Matrix& C) {
             int M = A.Rows(), K = A.Cols(), N = B.Rows();
-            if (C.Rows() != M || C.Cols() != N) C.Reset(M, N);
-
+            C.Reset(M, N);
 
             Matrix BT(K, N);
             for (i32 i = 0; i < N; ++i) {
@@ -190,7 +189,6 @@ namespace vsnn {
                 for (i32 j = 0; j < K; ++j) BT(j, i) = src[j];
             }
 
-            
             unsigned int num_threads = std::thread::hardware_concurrency();
             if (M < num_threads) num_threads = M;
 
@@ -212,7 +210,6 @@ namespace vsnn {
                         const float* a = &A.Raw()[(size_t)i * K];
                         float* c = &C.Raw()[(size_t)i * N];
                         for (int j = 0; j < K; ++j) {
-                            if (a[j] == 0) continue;
                             const float* b = &BT.Raw()[(size_t)j * N];
                             for (int k = 0; k < N; ++k) {
                                 c[k] += a[j] * b[k];
