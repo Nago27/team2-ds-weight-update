@@ -17,23 +17,56 @@ namespace vsnn {
 		static void MatMul1(const Matrix& A, const Matrix& B, Matrix& C) {
 			int M = A.Rows(), K = A.Cols(), N = B.Cols();
 			C.Reset(M, N);
+			if(K<N){
 #pragma omp parallel for
-			for (int i = 0; i < M; ++i) {
-				const float* a = &A.Raw()[(size_t)i * K];
-				float* c = &C.Raw()[(size_t)i * N];
-				for (int j = 0; j < K; ++j) {
-					if (a[j] == 0.0f) continue;
-					const __m256 a_vec = _mm256_set1_ps(a[j]);
-					const float* b = &B.Raw()[(size_t)j * N];
-					int k = 0;
-					for (; k +8 < N; k+=8) {
-						__m256 b_vec = _mm256_loadu_ps(b + k);
-						__m256 c_vec = _mm256_loadu_ps(c + k);
-						c_vec = _mm256_fmadd_ps(a_vec, b_vec, c_vec);
-						_mm256_storeu_ps(c + k, c_vec);
+				for (int i = 0; i < M; ++i) {
+					const float* a = &A.Raw()[(size_t)i * K];
+					float* c = &C.Raw()[(size_t)i * N];
+					for (int j = 0; j < K; ++j) {
+						if (a[j] == 0.0f) continue;
+						const __m256 a_vec = _mm256_set1_ps(a[j]);
+						const float* b = &B.Raw()[(size_t)j * N];
+						int k = 0;
+						for (; k + 8 < N; k += 8) {
+							__m256 b_vec = _mm256_loadu_ps(b + k);
+							__m256 c_vec = _mm256_loadu_ps(c + k);
+							c_vec = _mm256_fmadd_ps(a_vec, b_vec, c_vec);
+							_mm256_storeu_ps(c + k, c_vec);
+						}
+						for (; k < N; k++) {
+							c[k] += a[j] * b[k];
+						}
 					}
-					for (; k < N; k++) {
-						c[k] += a[j] * b[k];
+				}
+			}
+			else {
+				Matrix BT(N, K);
+#pragma omp parallel for
+				for (i32 i = 0; i < K; ++i) {
+					const f32* src = &B.Raw()[(size_t)i * N];
+					for (i32 j = 0; j < N; ++j) BT(j, i) = src[j];
+				}
+
+#pragma omp parallel for
+				for (int i = 0; i < M; ++i) {
+					const float* a = &A.Raw()[(size_t)i * K];
+					float* c = &C.Raw()[(size_t)i * N];
+					for (int j = 0; j < N; ++j) {
+						__m256 sum_vec = _mm256_setzero_ps();
+						const float* b = &BT.Raw()[(size_t)j * K];
+						int k = 0;
+						for (; k + 8 < K; k += 8) {
+							__m256 a_vec = _mm256_loadu_ps(a + k);
+							__m256 b_vec = _mm256_loadu_ps(b + k);
+							sum_vec = _mm256_fmadd_ps(a_vec, b_vec, sum_vec);
+						}
+						float sum_array[8];
+						_mm256_storeu_ps(sum_array, sum_vec);
+						float final_sum = sum_array[0] + sum_array[1] + sum_array[2] + sum_array[3] + sum_array[4] + sum_array[5] + sum_array[6] + sum_array[7];
+						for (; k < K; k++) {
+							final_sum += a[k] * b[k];
+						}
+						c[j] = final_sum;
 					}
 				}
 			}
@@ -42,31 +75,60 @@ namespace vsnn {
 		static void MatMul2(const Matrix& A, const Matrix& B, Matrix& C) {
 			int M = A.Rows(), K = A.Cols(), N = B.Cols();
 			if (C.Rows() != K || C.Cols() != N) C.Reset(K, N);
+			if (N > K) {
+				Matrix AT(K, M);
+#pragma omp parallel for
+				for (i32 i = 0; i < M; ++i) {
+					const f32* src = &A.Raw()[(size_t)i * K];
+					for (i32 j = 0; j < K; ++j) AT(j, i) = src[j];
+				}
+#pragma omp parallel for
+				for (int i = 0; i < K; ++i) {
+					const float* a = &AT.Raw()[(size_t)i * M];
+					float* c = &C.Raw()[(size_t)i * N];
+					for (int j = 0; j < M; ++j) {
+						if (a[j] == 0.0f) continue;
+						const __m256 a_vec = _mm256_set1_ps(a[j]);					
+						const float* b = &B.Raw()[(size_t)j * N];
+						int k = 0;
+						for (; k + 8 < N; k += 8) {
+							__m256 b_vec = _mm256_loadu_ps(b + k);
+							__m256 c_vec = _mm256_loadu_ps(c + k);
+							c_vec = _mm256_fmadd_ps(a_vec, b_vec, c_vec);
+							_mm256_storeu_ps(c + k, c_vec);
+						}
+						for (; k < N; k++) {
+							c[k] += a[j] * b[k];
+						}
 
-			Matrix AT(K, M);
-#pragma omp parallel for
-			for (i32 i = 0; i < M; ++i) {
-				const f32* src = &A.Raw()[(size_t)i * K];
-				for (i32 j = 0; j < K; ++j) AT(j, i) = src[j];
+					}
+				}
 			}
+			else {
+				Matrix CT(N, K);
+				for (int i = 0; i < M; ++i) {
+					const float* a = &A.Raw()[(size_t)i * K];
+					const float* b = &B.Raw()[(size_t)i * N];
 #pragma omp parallel for
-			for (int i = 0; i < K; ++i) {
-				const float* a = &AT.Raw()[(size_t)i * M];
-				float* c = &C.Raw()[(size_t)i * N];
-				for (int j = 0; j < M; ++j) {
-					if (a[j] == 0.0f) continue;
-					const __m256 a_vec = _mm256_set1_ps(a[j]);					const float* b = &B.Raw()[(size_t)j * N];
-					int k = 0;
-					for (; k + 8 < N; k += 8) {
-						__m256 b_vec = _mm256_loadu_ps(b + k);
-						__m256 c_vec = _mm256_loadu_ps(c + k);
-						c_vec = _mm256_fmadd_ps(a_vec, b_vec, c_vec);
-						_mm256_storeu_ps(c + k, c_vec);
+					for (int j = 0; j < N; ++j) {
+						float* c = &CT.Raw()[(size_t)j * K];
+						const __m256 b_vec = _mm256_set1_ps(b[j]);
+						int k = 0;
+						for (; k + 8 < K; k += 8) {
+							const __m256 a_vec = _mm256_loadu_ps(a + k);
+							__m256 c_vec = _mm256_loadu_ps(c + k);
+							c_vec = _mm256_fmadd_ps(a_vec, b_vec, c_vec);
+							_mm256_storeu_ps(c + k, c_vec);
+						}
+						for (; k < K; k++) {
+							c[k] += a[k] * b[j];
+						}
 					}
-					for (; k < N; k++) {
-						c[k] += a[j] * b[k];
-					}
-					
+				}
+#pragma omp parallel for
+				for (i32 i = 0; i < N; ++i) {
+					const f32* src = &CT.Raw()[(size_t)i * K];
+					for (i32 j = 0; j < K; ++j) C(j, i) = src[j];
 				}
 			}
 
