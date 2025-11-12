@@ -31,6 +31,8 @@ namespace vsnn {
 			
 			float* gb_ptr = &gb_.Raw()[0];
 			int num_cols = W_.Cols();
+
+
 			for (i32 i = 0; i < X.Rows(); ++i) {
 				const float* dY_ptr = &dY.Raw()[(size_t)i * num_cols];
 				for (i32 j = 0; j < num_cols; ++j)

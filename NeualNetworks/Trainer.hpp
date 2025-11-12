@@ -37,7 +37,7 @@ namespace vsnn {
 			yb.resize(N);
 			float* xb = &Xb.Raw()[0];
 			const float* x = &X.Raw()[0];
-
+#pragma omp parallel for
 			for (int i = 0; i < N; ++i) {
 				int actual_row_idx = idx[beg + i];
 				const float* src_row = x + (size_t)actual_row_idx * D;
