@@ -34,14 +34,5 @@ namespace vsnn {
 		inline void Fill(f32 v) { fill(data_.begin(), data_.end(), v); }
 		inline const vector<f32>& Raw() const { return data_; }
 		inline vector<f32>& Raw() { return data_; }
-
-		// 추가 부분
-		inline float* RowPtr(i32 r) { return data_.data() + static_cast<size_t>(r) * cols_; }
-		inline const float* RowPtr(i32 r) const { return data_.data() + static_cast<size_t>(r) * cols_; }
-
-		void ResetNoInit(i32 r, i32 c) {
-			rows_ = r; cols_ = c;
-			data_.resize(static_cast<size_t>(r) * c);
-		}
 	};
 }

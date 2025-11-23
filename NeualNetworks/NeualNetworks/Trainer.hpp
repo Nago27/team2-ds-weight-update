@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <random>
 #include <numeric>
-#include <cstring> // memcpy
 #include "Sequential.hpp"
 #include "Loss.hpp"
 #include "Timer.hpp"
@@ -32,20 +31,19 @@ namespace vsnn {
 
 	class Trainer {
 	private:
-		// 배치 복사 비용 줄이기 (메모리 이동 최적화) <- replace
-		static void SliceBatchFast(const Matrix& Xs, const vector<int>& ys,
-			int beg, int end, Matrix& Xb, vector<int>& yb)
-		{
-			const int N = end - beg, D = Xs.Cols();
-			if (Xb.Rows() != N || Xb.Cols() != D) Xb.ResetNoInit(N, D);
+		static void SliceBatch(const Matrix& X, const vector<int>& y, const vector<int>& idx, int beg, int end, Matrix& Xb, vector<int>& yb) {
+			const int N = end - beg; const int D = X.Cols();
+			if (Xb.Rows() != N || Xb.Cols() != D) Xb.Reset(N, D);
 			yb.resize(N);
-			// 행 단위 memcpy (연속 메모리 가정: row-major)
-			const size_t row_bytes = static_cast<size_t>(D) * sizeof(float);
+			float* xb = &Xb.Raw()[0];
+			const float* x = &X.Raw()[0];
+
 			for (int i = 0; i < N; ++i) {
-				const float* src = &Xs.Raw()[static_cast<size_t>(beg + i) * D];
-				float* dst = &Xb.Raw()[static_cast<size_t>(i) * D];
-				memcpy(dst, src, row_bytes);
-				yb[i] = ys[beg + i];
+				int actual_row_idx = idx[beg + i];
+				const float* src_row = x + (size_t)actual_row_idx * D;
+				float* dst_row = xb + (size_t)i * D;
+				memcpy(dst_row, src_row, D * sizeof(float));
+				yb[i] = y[actual_row_idx];
 			}
 		}
 	public:
@@ -64,27 +62,17 @@ namespace vsnn {
 				shuffle(idx.begin(), idx.end(), rng);
 
 
-				// 셔플 데이터 복사 (간단 버전)
-				Matrix Xs(X.Rows(), X.Cols()); vector<int> ys = y;
-				for (int i = 0; i < X.Rows(); ++i) {
-					for (int d = 0; d < X.Cols(); ++d) Xs(i, d) = X(idx[i], d);
-					ys[i] = y[idx[i]];
-				}
-
-
 				double sum_epoch_ms = 0.0; // 전체 에폭 시간 합
 				double sum_up_ms = 0.0; // 업데이트 시간만 합
 
-				Matrix Xb;
-				vector<int> yb;
 
 				for (int e = 0; e < cfg.epochs; ++e) {
 					T.Tic();
-					const int N = Xs.Rows();
+					const int N = X.Rows();
 					for (int beg = 0; beg < N; beg += cfg.batch) {
 						const int end = min(N, beg + cfg.batch);
-						// REPLACE: SliceBatch -> SliceBatchFast
-						SliceBatchFast(Xs, ys, beg, end, Xb, yb);
+						Matrix Xb; vector<int> yb;
+						SliceBatch(X, y, idx, beg, end, Xb, yb);
 
 
 						// FWD -> LOSS -> BWD

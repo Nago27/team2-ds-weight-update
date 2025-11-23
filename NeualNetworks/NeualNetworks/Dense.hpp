@@ -1,4 +1,5 @@
-﻿// =============================
+
+// =============================
 // include/vsnn/Dense.hpp
 // =============================
 #pragma once
@@ -18,28 +19,34 @@ namespace vsnn {
 			Initializer::Uniform(W_, init_scale, 123);
 			b_.Fill(0.0f); gW_.Fill(0.0f); gb_.Fill(0.0f);
 		}
-
-		// Forward: bias 융합 커널(행 접근) 사용 권장
 		void Forward(const Matrix& X, Matrix& Y) override {
-			Ops::MatMulBias(X, W_, b_, Y);  // 이 함수도 행-우선 누적 형태여야 함
+			Ops::MatMul1(X, W_, Y);
+			Ops::AddRowBias(Y, b_);
 		}
+		void Backward(const Matrix& X, const Matrix& dY, Matrix& dX, int i) override {
+			// gW = X^T * dY
+			Ops::MatMul2(X, dY, gW_);
+			// gb = sum_rows(dY)
+			if (gb_.Rows() != 1 || gb_.Cols() != W_.Cols()) gb_.Reset(1, W_.Cols());
+			
+			float* gb_ptr = &gb_.Raw()[0];
+			int num_cols = W_.Cols();
+			for (i32 i = 0; i < X.Rows(); ++i) {
+				const float* dY_ptr = &dY.Raw()[(size_t)i * num_cols];
+				for (i32 j = 0; j < num_cols; ++j)
+					gb_ptr[j] += dY_ptr[j];
+			}
 
-		void Backward(const Matrix& X, const Matrix& dY, Matrix& dX) override {
-			// gW, gb 한 패스 누적을 쓰고 있었다면 그것 유지 OR 아래 2줄로 나눠도 됨
-			// 1) gW 타일형 누적
-			Ops::MatMulT_A_Tiled(X, dY, gW_);          // <-- REPLACE: 타일형으로 교체
-			// 2) gb = sum_rows(dY) (또는 기존의 동시 누적 커널 유지)
-			Ops::SumRows(dY, gb_);
-			// 3) dX = dY * W^T (행 연속 접근 커널 그대로)
-			Ops::MatMulT_B(dY, W_, dX);
+			// dX = dY * W^T
+			if(i!=0)
+				Ops::MatMul3(dY, W_, dX);
 		}
-
 		void ZeroGrad() override { gW_.Fill(0.0f); gb_.Fill(0.0f); }
-		// Step는 Trainer에서 StudentUpdater로 처리하므로 no-op
+		// Step�� Trainer���� StudentUpdater�� ó���ϹǷ� no-op
 		void Step(float) override {}
 
 
-		// 접근자 (StudentUpdater용)
+		// ������ (StudentUpdater��)
 		Matrix& WRef() { return W_; }
 		Matrix& bRef() { return b_; }
 		Matrix& gWRef() { return gW_; }

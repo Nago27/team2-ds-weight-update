@@ -4,200 +4,324 @@
 #pragma once
 #include <cmath>
 #include <algorithm>
+#include <thread>
+#include<queue>
+#include<mutex>
+#include<condition_variable>
+#include<functional>
 #include "Matrix.hpp"
 
 using namespace std;
 
 namespace vsnn {
+    class ThreadPool {
+    public:
+        // 생성자: 하드웨어 코어 수만큼 스레드를 미리 생성합니다.
+        ThreadPool(size_t num_threads) : stop(false) {
+            if (num_threads == 0) num_threads = 1;
+            for (size_t i = 0; i < num_threads; ++i) {
+                workers.emplace_back([this] {
+                    // 각 스레드가 이 '일꾼 루프'를 계속 돕니다.
+                    for (;;) {
+                        std::function<void()> task;
+                        {
+                            // 1. 뮤텍스로 큐를 잠급니다.
+                            std::unique_lock<std::mutex> lock(this->queue_mutex);
+
+                            // 2. '일거리가 없으면' 잠듭니다. (stop 신호가 와도 깸)
+                            this->condition.wait(lock, [this] {
+                                return this->stop || !this->tasks.empty();
+                                });
+
+                            // 3. 종료 신호가 왔고, 일거리도 없으면 스레드 종료
+                            if (this->stop && this->tasks.empty())
+                                return;
+
+                            // 4. 일거리를 하나 꺼냅니다.
+                            task = std::move(this->tasks.front());
+                            this->tasks.pop();
+                        } // 5. 큐의 잠금을 해제합니다. (다른 스레드가 큐에 접근 가능)
+
+                        // 6. 일거리를 실행합니다.
+                        task();
+                    }
+                 });
+            }
+        }
+
+        ~ThreadPool() {
+            {
+                std::unique_lock<std::mutex> lock(queue_mutex);
+                stop = true; // 1. 종료 신호
+            }
+            condition.notify_all(); // 2. 자고 있는 모든 스레드를 깨움
+            for (std::thread& worker : workers)
+                worker.join(); // 3. 모든 스레드가 종료될 때까지 대기
+        }
+
+        // '작업표' (함수)를 큐에 넣는 함수
+        void enqueue(std::function<void()> task) {
+            {
+                std::unique_lock<std::mutex> lock(queue_mutex);
+                if (stop) return; // 풀이 닫혔으면 작업을 받지 않음
+                tasks.emplace(std::move(task));
+            }
+            condition.notify_one(); // 자고 있는 스레드 중 '하나'를 깨움
+        }
+
+    private:
+        std::vector<std::thread> workers;
+        std::queue<std::function<void()>> tasks;
+        std::mutex queue_mutex;
+        std::condition_variable condition;
+        bool stop;
+    };
+
+    ThreadPool g_pool(std::thread::hardware_concurrency());
+
 	class Ops {
 	public:
-		// Y = X * W with shapes: (N,in) * (in,out) = (N,out)
-		static void MatMul(const Matrix& X, const Matrix& W, Matrix& Y) {
-			assert(X.Cols() == W.Rows());
-			if (Y.Rows() != X.Rows() || Y.Cols() != W.Cols()) Y.Reset(X.Rows(), W.Cols());
-			for (i32 n = 0; n < X.Rows(); ++n) {
-				for (i32 j = 0; j < W.Cols(); ++j) {
-					float acc = 0.0f;
-					for (i32 k = 0; k < X.Cols(); ++k) acc += X(n, k) * W(k, j);
-					Y(n, j) = acc;
+        
+        // Y = X * W
+        static void MatMul1(const Matrix& A, const Matrix& B, Matrix& C) {
+            int M = A.Rows(), K = A.Cols(), N = B.Cols();
+            if (C.Rows() != M || C.Cols() != N) C.Reset(M, N);
+
+            unsigned int num_threads = std::thread::hardware_concurrency();
+            if (M < num_threads) num_threads = M;
+
+            int rows_per_thread = (M + num_threads - 1) / num_threads;
+ 
+            std::atomic<int> tasks_remaining(num_threads);
+
+            for (unsigned int t = 0; t < num_threads; ++t) {
+                int start_row = t * rows_per_thread;
+                int end_row = std::min(start_row + rows_per_thread, M);
+
+                if (start_row >= end_row) {
+                    tasks_remaining.fetch_sub(1); // 이 스레드는 할 일이 없음
+                    continue;
+                }
+
+                auto task = [&A, &B, &C, start_row, end_row, K, N, &tasks_remaining]() {
+                    for (int i = start_row; i < end_row; ++i) {
+                        const float* a = &A.Raw()[(size_t)i * K];
+                        float* c = &C.Raw()[(size_t)i * N];
+                        for (int j = 0; j < K; ++j) {
+                            if (a[j] == 0.0f) continue;
+                            const float* b = &B.Raw()[(size_t)j * N];
+                            for (int k = 0; k < N; ++k) {
+                                c[k] += a[j] * b[k];
+                            }
+                        }
+                    }
+                    tasks_remaining.fetch_sub(1);
+                 };
+                g_pool.enqueue(std::move(task));
+            }
+
+            while (tasks_remaining.load() > 0) {
+                std::this_thread::yield();
+            }
+        }
+
+        // gW = X^T * dY
+        static void MatMul2(const Matrix& A, const Matrix& B, Matrix& C) {
+            int M = A.Rows(), K = A.Cols(), N = B.Cols();
+            if (C.Rows() != K || C.Cols() != N) C.Reset(K, N);
+
+            unsigned int num_threads = std::thread::hardware_concurrency();
+            if (K < num_threads) num_threads = K;
+
+            int rows_per_thread = (K + num_threads - 1) / num_threads;
+
+            std::atomic<int> tasks_remaining(num_threads);
+
+            for (unsigned int t = 0; t < num_threads; ++t) {
+                int start_row = t * rows_per_thread;
+                int end_row = std::min(start_row + rows_per_thread, K);
+
+                if (start_row >= end_row) {
+                    tasks_remaining.fetch_sub(1);
+                    continue;
+                }
+
+                auto task = [&A, &B, &C, start_row, end_row, M, K, N, &tasks_remaining]() {
+                    for (int i = 0; i < M; ++i) {
+                        const float* a = &A.Raw()[(size_t)i * K];
+                        const float* b = &B.Raw()[(size_t)i * N];
+                        for (int j = start_row; j < end_row; ++j) {
+                            if (a[j] == 0.0f) continue;
+                            float* c = &C.Raw()[(size_t)j * N];
+                            for (int k = 0; k < N; ++k) {
+                                c[k] += a[j] * b[k];
+                            }
+                        }
+                    }
+                    tasks_remaining.fetch_sub(1);
+                 };
+                g_pool.enqueue(std::move(task));
+            }
+            while (tasks_remaining.load() > 0) {
+                std::this_thread::yield();
+            }
+        }
+        // dX = dY * W^T
+        static void MatMul3(const Matrix& A, const Matrix& B, Matrix& C) {
+            int M = A.Rows(), K = A.Cols(), N = B.Rows();
+            if (C.Rows() != M || C.Cols() != N) C.Reset(M, N);
+
+
+            Matrix BT(K, N);
+            for (i32 i = 0; i < N; ++i) {
+                const f32* src = &B.Raw()[(size_t)i * K];
+                for (i32 j = 0; j < K; ++j) BT(j, i) = src[j];
+            }
+
+            
+            unsigned int num_threads = std::thread::hardware_concurrency();
+            if (M < num_threads) num_threads = M;
+
+            int rows_per_thread = (M + num_threads - 1) / num_threads;
+
+            std::atomic<int> tasks_remaining(num_threads);
+
+            for (unsigned int t = 0; t < num_threads; ++t) {
+                int start_row = t * rows_per_thread;
+                int end_row = std::min(start_row + rows_per_thread, M);
+
+                if (start_row >= end_row) {
+                    tasks_remaining.fetch_sub(1); 
+                    continue;
+                }
+
+                auto task = [&A, &BT, &C, start_row, end_row, K, N, &tasks_remaining]() {
+                    for (int i = start_row; i < end_row; ++i) { 
+                        const float* a = &A.Raw()[(size_t)i * K];
+                        float* c = &C.Raw()[(size_t)i * N];
+                        for (int j = 0; j < K; ++j) {
+                            if (a[j] == 0) continue;
+                            const float* b = &BT.Raw()[(size_t)j * N];
+                            for (int k = 0; k < N; ++k) {
+                                c[k] += a[j] * b[k];
+                            } 
+                        }
+                    }
+                    tasks_remaining.fetch_sub(1);
+                 };
+                g_pool.enqueue(std::move(task));
+            }
+            while (tasks_remaining.load() > 0) {
+                std::this_thread::yield();
+            }
+        }
+        
+
+		//// Y = X * W
+		//static void MatMul1(const Matrix& A, const Matrix& B, Matrix& C) {
+		//	int M = A.Rows(), K = A.Cols(), N = B.Cols();
+		//	if (C.Rows() != M || C.Cols() != N) C.Reset(M, N);
+
+		//	for (int i = 0; i < M; ++i) {
+		//		const float* a = &A.Raw()[(size_t)i * K];
+		//		float* c = &C.Raw()[(size_t)i * N];
+		//		for (int j = 0; j < K; ++j) {
+		//			if (a[j] == 0.0f) continue;
+		//			const float* b = &B.Raw()[(size_t)j * N];
+		//			for (int k = 0; k < N; ++k) {
+		//				c[k] += a[j] * b[k];
+		//			}
+		//		}
+		//	}
+		//}
+		//// gW = X^T * dY
+		//static void MatMul2(const Matrix& A, const Matrix& B, Matrix& C) {
+		//	int M = A.Rows(), K = A.Cols(), N = B.Cols();
+		//	if (C.Rows() != K || C.Cols() != N) C.Reset(K, N);
+
+		//	for (int i = 0; i < M; ++i) {
+		//		const float* a = &A.Raw()[(size_t)i * K];
+		//		const float* b = &B.Raw()[(size_t)i * N];
+		//		for (int j = 0; j < K; ++j) {
+		//			if (a[j] == 0.0f) continue;
+		//			float* c = &C.Raw()[(size_t)j * N];
+		//			for (int k = 0; k < N; ++k) {
+		//				c[k] += a[j] * b[k];
+		//			}
+		//		}
+		//	}
+
+		//}
+		//// dX = dY * W^T
+		//static void MatMul3(const Matrix& A, const Matrix& B, Matrix& C) {
+		//	int M = A.Rows(), K = A.Cols(), N = B.Rows();
+		//	if (C.Rows() != M || C.Cols() != N) C.Reset(M, N);
+
+		//	Matrix BT(K, N);
+		//	for (i32 i = 0; i < N; ++i) {
+		//		const f32* src = &B.Raw()[(size_t)i * K];
+		//		for (i32 j = 0; j < K; ++j) BT(j, i) = src[j];
+		//	}
+
+		//	for (int i = 0; i < M; ++i) {
+		//		const float* a = &A.Raw()[(size_t)i * K];
+		//		float* c = &C.Raw()[(size_t)i * N];
+		//		for (int j = 0; j < K; ++j) {
+		//			if (a[j] == 0) continue;
+		//			const float* b = &BT.Raw()[(size_t)j * N];
+		//			for (int k = 0; k < N; ++k) {
+		//				c[k] += a[j] * b[k];
+		//			}
+		//		}
+		//	}
+		//}
+
+		static void AddRowBias(Matrix& Y, const Matrix& b) {
+			assert(b.Rows() == 1 && b.Cols() == Y.Cols());
+			int num_rows = Y.Rows();
+			int num_cols = Y.Cols();
+			const float* b_ptr = &b.Raw()[0];
+			float* y_ptr = &Y.Raw()[0];
+
+			for (int n = 0; n < num_rows; ++n) {
+				float* y_ptr_ = y_ptr + num_cols * n;
+				for (int j = 0; j < num_cols; ++j) {
+					y_ptr_[j] += b_ptr[j];
 				}
 			}
 		}
-		static void AddRowBias(Matrix& Y, const Matrix& b) {
-			assert(b.Rows() == 1 && b.Cols() == Y.Cols());
-			for (i32 n = 0; n < Y.Rows(); ++n)
-				for (i32 j = 0; j < Y.Cols(); ++j) Y(n, j) += b(0, j);
-		}
+
 		static void ReLUForward(const Matrix& X, Matrix& Y) {
 			if (Y.Rows() != X.Rows() || Y.Cols() != X.Cols()) Y.Reset(X.Rows(), X.Cols());
-			for (i32 r = 0; r < X.Rows(); ++r)
-				for (i32 c = 0; c < X.Cols(); ++c)
-					Y(r, c) = (X(r, c) > 0.0f) ? X(r, c) : 0.0f;
+
+			const float* x_ptr = &X.Raw()[0];
+			float* y_ptr = &Y.Raw()[0];
+			int total_size = X.Rows() * X.Cols();
+
+			for (int i = 0; i < total_size; ++i) {
+				y_ptr[i] = (x_ptr[i] > 0.0f) ? x_ptr[i] : 0.0f;
+			}
 		}
+
 		static void ReLUBackward(const Matrix& X, const Matrix& dY, Matrix& dX) {
 			if (dX.Rows() != X.Rows() || dX.Cols() != X.Cols()) dX.Reset(X.Rows(), X.Cols());
-			for (i32 r = 0; r < X.Rows(); ++r)
-				for (i32 c = 0; c < X.Cols(); ++c)
-					dX(r, c) = (X(r, c) > 0.0f) ? dY(r, c) : 0.0f;
+
+			const float* x_ptr = &X.Raw()[0];
+			const float* dy_ptr = &dY.Raw()[0];
+			float* dx_ptr = &dX.Raw()[0];
+			int total_size = X.Rows() * X.Cols();
+
+			for (int i = 0; i < total_size; ++i) {
+				dx_ptr[i] = (x_ptr[i] > 0.0f) ? dy_ptr[i] : 0.0f;
+			}
 		}
+
 		static void SoftmaxRow(const float* logits, float* probs, int C) {
 			float m = logits[0];
 			for (int i = 1; i < C; ++i) m = max(m, logits[i]);
 			float s = 0.0f; for (int i = 0; i < C; ++i) { probs[i] = exp(logits[i] - m); s += probs[i]; }
 			if (s == 0.0f) s = 1e-12f;
 			for (int i = 0; i < C; ++i) probs[i] /= s;
-		}
-
-		// 벡터 방정식 및 전치 포함 연산 지원
-		// ---- Forward: Y = X * W + b (루프 융합) --------------------------
-		// ---- REPLACE: MatMulBias (행 연속 누적 + bias 사전 채움) ----
-		static void MatMulBias(const Matrix& X, const Matrix& W, const Matrix& b, Matrix& Y) {
-			assert(X.Cols() == W.Rows()); assert(b.Rows() == 1 && b.Cols() == W.Cols());
-			const i32 N = X.Rows(), in = X.Cols(), out = W.Cols();
-			if (Y.Rows() != N || Y.Cols() != out) Y.ResetNoInit(N, out);
-
-			for (i32 n = 0; n < N; ++n) {
-				const float* x = X.RowPtr(n);
-				float* y = Y.RowPtr(n);
-
-				// bias로 초기화
-				for (i32 j = 0; j < out; ++j) y[j] = b(0, j);
-
-				// y += x[k] * W.row(k)
-				for (i32 k = 0; k < in; ++k) {
-					const float s = x[k];
-					if (s == 0.0f) continue;                 // 희소성 활용
-					const float* wrow = W.RowPtr(k);       // 연속
-					for (i32 j = 0; j < out; ++j) y[j] += s * wrow[j];
-				}
-			}
-		}
-
-		// ---- Backward: dX = dY * W^T ------------------------------------
-		static void MatMulT_B(const Matrix& dY, const Matrix& W, Matrix& dX) {
-			assert(dY.Cols() == W.Cols());
-			const i32 N = dY.Rows(), out = dY.Cols(), in = W.Rows();
-			if (dX.Rows() != N || dX.Cols() != in) dX.ResetNoInit(N, in);
-
-			for (i32 n = 0; n < N; ++n) {
-				const float* dy = dY.RowPtr(n);     // 연속
-				float* dx = dX.RowPtr(n);
-				for (i32 k = 0; k < in; ++k) {
-					const float* wrow = W.RowPtr(k); // 연속
-					float acc = 0.0f;
-					for (i32 j = 0; j < out; ++j) acc += dy[j] * wrow[j];
-					dx[k] = acc;
-				}
-			}
-		}
-
-		// ---- Backward: gW = X^T * dY  (outer-product 누적) --------------
-		static void MatMulT_A(const Matrix& X, const Matrix& dY, Matrix& gW) {
-			assert(X.Rows() == dY.Rows());
-			const i32 N = X.Rows(), in = X.Cols(), out = dY.Cols();
-			if (gW.Rows() != in || gW.Cols() != out) gW.ResetNoInit(in, out);
-			gW.Fill(0.0f);
-
-			for (i32 n = 0; n < N; ++n) {
-				const float* x = X.RowPtr(n);
-				const float* dy = dY.RowPtr(n);
-				for (i32 k = 0; k < in; ++k) {
-					float* gwrow = gW.RowPtr(k);   // 연속
-					const float xk = x[k];
-					for (i32 j = 0; j < out; ++j) gwrow[j] += xk * dy[j];
-				}
-			}
-		}
-
-		// ---- 행 합: gb = sum_rows(dY)  (편의) ---------------------------
-		static void SumRows(const Matrix& A, Matrix& out1xC) {
-			const i32 N = A.Rows(), C = A.Cols();
-			if (out1xC.Rows() != 1 || out1xC.Cols() != C) out1xC.ResetNoInit(1, C);
-			for (i32 j = 0; j < C; ++j) {
-				float acc = 0.0f;
-				for (i32 n = 0; n < N; ++n) acc += A(n, j);
-				out1xC(0, j) = acc;
-			}
-		}
-
-		// ReLU까지 1패스로 융합
-		// ---- REPLACE: MatMulBiasReLU 본문 전체 교체 ----
-		static void MatMulBiasReLU(const Matrix& X, const Matrix& W, const Matrix& b, Matrix& Y) {
-			assert(X.Cols() == W.Rows()); assert(b.Rows() == 1 && b.Cols() == W.Cols());
-			const i32 N = X.Rows(), in = X.Cols(), out = W.Cols();
-			if (Y.Rows() != N || Y.Cols() != out) Y.ResetNoInit(N, out);
-
-			for (i32 n = 0; n < N; ++n) {
-				const float* x = X.RowPtr(n);
-				float* y = Y.RowPtr(n);
-
-				// 1) bias로 초기화 (행 단위 복사 가능)
-				//   std::memcpy(y, b.RowPtr(0), sizeof(float)*out);  // memcpy 사용 가능
-				for (i32 j = 0; j < out; ++j) y[j] = b(0, j);
-
-				// 2) 행(연속) 기준 누적: y += x[k] * W.row(k)
-				for (i32 k = 0; k < in; ++k) {
-					const float s = x[k];
-					if (s == 0.0f) continue;                  // 희소 입력이면 건너뛰기
-					const float* wrow = W.RowPtr(k);          // 연속 접근
-					for (i32 j = 0; j < out; ++j) y[j] += s * wrow[j];
-				}
-
-				// 3) ReLU 한 번에 적용
-				for (i32 j = 0; j < out; ++j) y[j] = (y[j] > 0.f) ? y[j] : 0.f;
-			}
-		}
-
-		// gb(bias grad)까지 한 번에 누적 (메모리 패스 삭제)
-		static void MatMulT_A_GB(const Matrix& X, const Matrix& dY, Matrix& gW, Matrix& gb) {
-			assert(X.Rows() == dY.Rows());
-			const i32 N = X.Rows(), in = X.Cols(), out = dY.Cols();
-			if (gW.Rows() != in || gW.Cols() != out) gW.ResetNoInit(in, out);
-			if (gb.Rows() != 1 || gb.Cols() != out) gb.ResetNoInit(1, out);
-			// gW.Fill(0.f);
-			gb.Fill(0.f);
-
-			for (i32 n = 0; n < N; ++n) {
-				const float* x = X.RowPtr(n);
-				const float* dy = dY.RowPtr(n);
-				for (i32 k = 0; k < in; ++k) {
-					float* gwrow = gW.RowPtr(k);
-					const float xk = x[k];
-					for (i32 j = 0; j < out; ++j) gwrow[j] += xk * dy[j];
-				}
-				// gb 누적 (같은 패스에서)
-				for (i32 j = 0; j < out; ++j) gb(0, j) += dy[j];
-			}
-		}
-
-		// ---- ADD: 타일형 gW 커널 (행 연속 + 캐시 블로킹) ----
-		static void MatMulT_A_Tiled(const Matrix& X, const Matrix& dY, Matrix& gW,
-			int Tk = 64, int Tj = 128) {
-			assert(X.Rows() == dY.Rows());
-			const i32 N = X.Rows(), in = X.Cols(), out = dY.Cols();
-			if (gW.Rows() != in || gW.Cols() != out) gW.ResetNoInit(in, out);
-			gW.Fill(0.0f);
-
-			for (i32 kb = 0; kb < in; kb += Tk) {
-				const i32 kend = std::min<i32>(in, kb + Tk);
-				for (i32 jb = 0; jb < out; jb += Tj) {
-					const i32 jend = std::min<i32>(out, jb + Tj);
-					// 타일 누적
-					for (i32 n = 0; n < N; ++n) {
-						const float* x = X.RowPtr(n);
-						const float* dy = dY.RowPtr(n);
-						for (i32 k = kb; k < kend; ++k) {
-							float* __restrict gwrow = gW.RowPtr(k) + jb;     // 연속
-							const float s = x[k];
-							if (s == 0.0f) continue; // ReLU 뒤 희소성 활용
-							const float* __restrict dyblk = dy + jb;         // 연속
-							for (i32 j = jb; j < jend; ++j) {
-								gwrow[j - jb] += s * dyblk[j - jb];
-							}
-						}
-					}
-				}
-			}
 		}
 	};
 }
