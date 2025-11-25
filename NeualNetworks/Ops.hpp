@@ -109,7 +109,6 @@ namespace vsnn {
 				for (int i = 0; i < M; ++i) {
 					const float* a = &A.Raw()[(size_t)i * K];
 					const float* b = &B.Raw()[(size_t)i * N];
-#pragma omp parallel for
 					for (int j = 0; j < N; ++j) {
 						float* c = &CT.Raw()[(size_t)j * K];
 						const __m256 b_vec = _mm256_set1_ps(b[j]);
