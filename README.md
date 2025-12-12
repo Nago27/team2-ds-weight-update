@@ -58,7 +58,7 @@ void Backward(const Matrix& dOut) {
 - Before
 - After
 
-### 불필요한 연산/복사 변경
+### 불필요한 dX 연산 삭제/메모리 복사 최적화
 - Before
 - After
 
@@ -71,10 +71,10 @@ void Backward(const Matrix& dOut) {
 - After
 
 ## 팀원들의 역할
-- 강은우(조장): 
-- 김건우: 
-- 이동현: 
-- 임동건:
+- 강은우(조장): 자료조사, 행 단위 연산 변경 구현
+- 김건우: 자료조사(Eigen 외부 라이브러리 분석), 메모리 복사 최적화
+- 이동현: 자료조사(Eigen 외부 라이브러리 분석), OpenMP 및 AVX 적용 및 구현
+- 임동건: 자료조사, GitHub 협업 개발 환경 구축, 중간발표 PPT 및 최종보고서 작성
   
 ## 진행 과정 및 일정
 - 3~5주차: 자료조사
