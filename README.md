@@ -40,12 +40,17 @@ void Backward(const Matrix& dOut) {
 - 기존 Matrix(row_major)의 사용 방식을 행 단위 연산으로 변경 (자료구조 활용 변경)
 
 ## 주요 구현 내용
+#### 행 연산 변경 및 OpenMP & AVX 적용
 - Ops::MatMul1: $Y = X \times W$ (행 누적 + 희소성 데이터 스킵)
 - Ops::MatMul2: $gW = X^T * dY$ (행 누적 + 희소성 데이터 스킵)
 - Ops::MatMul3: $dX = dY * W^T$ (전치 행렬)
-- Dense.hpp: dX 연산 삭제
-- OpenMP, AVX 적용
-- 프로젝트 수정 변경
+- AddRowBias 수정
+- LeLU Forward/Backward 연산
+#### 불필요한 메모리 복사 최적화
+
+#### dX 연산 삭제 (Dense.hpp)
+
+#### 프로젝트 속성 변경
 
 
 ## 실행 결과 (전/후 훈련시간 비교)
@@ -72,4 +77,7 @@ void Backward(const Matrix& dOut) {
 - 임동건:
   
 ## 진행 과정 및 일정
-
+- 3~5주차: 자료조사
+- 6~11주차: 행 연산 변경, 데이터 복사 최적화
+- 12~14주차: OpenMP와 AVX 적용, 프로젝트 속성 변경
+- 15주차: 최종 보고서 작성
