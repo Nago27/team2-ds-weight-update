@@ -5,13 +5,11 @@
 <div align="left">2022203036 임동건</div>
 
 ## 문제점 파악
-#### 행 우선 접근 방식
+### 행 우선 접근 방식
 - Matrix.hpp에서는 행 우선(row_major) 접근 방식이지만, Ops.hpp, Dense.hpp 에서는 ‘열‘ 방향으로 접근하여 캐시 미스가 발생
-- $gW = X^T \times dY$, $gb = ∑rows(dy)$ 계산시 **열 방향**으로 누적되어 비연속 접근이 반복되고 있음.
+- $gW = X^T \times dY$, $gb = ∑rows(dy)$ 계산시 **열 방향**으로 누적되어 비연속 접근이 반복되고 있음
 
-
-
-#### 불필요한 연산/복사 비용
+### 불필요한 연산/복사 비용
 - SliceBatch에서 현재 배치 구성시에 깊은 복사가 매 스텝 마다 발생되므로 복사량이 많이 누적되어 시간/메모리 대역폭을 잡아먹음
 - Sequential.hpp의 forward(), backward()에서 불필요한 복사 과정이 있다.
 ```cpp
@@ -35,13 +33,37 @@ void Backward(const Matrix& dOut) {
 }
 ```
 - 불필요한 연산 dX
+```cpp
+```
 
 ## 문제를 해결하기 위한 자료구조    
 - 기존 Matrix(row_major)의 사용 방식을 행 단위 연산으로 변경 (자료구조 활용 변경)
 
 ## 주요 구현 내용
+- Ops::MatMul1: $Y = X \times W$ (행 누적 + 희소성 데이터 스킵)
+- Ops::MatMul2: $gW = X^T * dY$ (행 누적 + 희소성 데이터 스킵)
+- Ops::MatMul3: $dX = dY * W^T$ (전치 행렬)
+- Dense.hpp: dX 연산 삭제
+- OpenMP, AVX 적용
+- 프로젝트 수정 변경
 
-## 실행 결과
+
+## 실행 결과 (전/후 훈련시간 비교)
+### 행 단위 연산 변경
+- Before
+- After
+
+### 불필요한 연산/복사 변경
+- Before
+- After
+
+### OpenMP, AVX
+- Before
+- After
+
+### 프로젝트 속성 변경
+- Before
+- After
 
 ## 팀원들의 역할
 - 강은우(조장): 
