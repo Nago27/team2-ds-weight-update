@@ -182,7 +182,6 @@ namespace vsnn {
 				const float* a = &A.Raw()[(size_t)i * K];
 				float* c = &C.Raw()[(size_t)i * N];
 				for (int j = 0; j < K; ++j) {
-					if (a[j] == 0.0f) continue;
 					const __m256 a_vec = _mm256_set1_ps(a[j]);
 					const float* b = &BT.Raw()[(size_t)j * N];
 					int k = 0;
