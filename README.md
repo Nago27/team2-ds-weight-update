@@ -58,8 +58,10 @@ void Backward(const Matrix& dOut) {
 ## 실행 결과 (전/후 훈련시간 비교)
 ### 행 단위 연산 변경
 - Before
+- <img width="631" height="550" alt="Image" src="https://github.com/user-attachments/assets/5629467b-e76c-4bbe-b975-99c4bf3c70e7" />
 - After
 <img width="620" height="539" alt="Image" src="https://github.com/user-attachments/assets/7e366b91-7e33-4f6a-9e67-fefcac4804e0" />
+
 ### 불필요한 dX 연산 삭제/메모리 복사 최적화
 - Before
 - After
