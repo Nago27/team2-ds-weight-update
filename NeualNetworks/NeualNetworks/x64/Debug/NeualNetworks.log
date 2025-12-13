@@ -1,2 +1,7 @@
-﻿  main.cpp
+﻿cl : 명령줄  warning D9025: '/sdl'을(를) '/GS-'(으)로 재정의합니다.
+  main.cpp
+  main.obj : /GL로 컴파일한 MSIL .netmodule 또는 모듈이 있습니다. /LTCG를 지정하여 링크를 다시 시작하십시오. /LTCG를 링크 명령줄에 추가하면 링커 성능이 향상됩니다.
+LINK : warning LNK4075: '/INCREMENTAL'이(가) '/LTCG' 사양으로 인해 무시됩니다.
+  코드를 생성하고 있습니다.
+  코드를 생성했습니다.
   NeualNetworks.vcxproj -> C:\Users\enwoo\Source\Repos\team\NeualNetworks\x64\Debug\NeualNetworks.exe
