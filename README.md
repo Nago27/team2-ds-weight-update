@@ -47,7 +47,7 @@ void Backward(const Matrix& dOut) {
 - AddRowBias 수정
 - LeLU Forward/Backward 연산
 
-​행렬 곱 연선 구현은 OpenMP(스레드 병렬)와 AVX2(SIMD 병렬)를 통한 하드웨어 가속, 그리고 연속적인 자료구조의 활용이라는 두 가지 핵심 목표를 동시에 달성하는 데 집중하였다. 먼저, 각 행렬 곱 연산마다 전치 형태($A \times B$ vs $A^T \times B$)가 다르다는 점을 고려하여 MatMul 함수를 3가지로 분리하였다. 이후 하드웨어 효율을 극대화하기 위해 루프 순서를 재설계하였다. 구체적으로는 한 번에 데이터를 묶어 처리하는 AVX2의 성능을 위해 가장 긴 축을 안쪽 루프에 배치하고, OpenMP가 적용되는 바깥쪽 루프에는 충분히 큰 축을 배치하여 유휴 스레드 없이 부하를 균등하게 분산시켰다. 또한 레이어마다 행렬의 크기가 다르다는 점을 반영하여 3개의 MatMul 함수 내부에서도 행렬의 크기 조건에 따라 분기되도록 설계해 총 5가지의 최적화된 루프를 구현하였다. 루프 순서 변경 과정에서 발생하는 열 단위 접근과 멀티스레드 경쟁 상태문제는 함수 내부에서 연산 전에 대상 행렬의 전치행렬을 생성하여 해결하였다. 전치행렬을 이용함으로써 행 단위 접근으로 변환해 자료구조의 물리적 연속성을 극대화하였으며 동시에 각 스레드가 서로 다른 행에만 쓰기 작업을 수행하도록 유도하여 별도의 동기화 비용 없이도 스레드 안전성을 확보하였다. 추가적으로 입력 데이터가 0인 경우 연산을 생략하여 데이터의 희소성을 활용하였으며, 이러한 행 단위 연속 접근 및 AVX2 활용은 AddRowBias와 ReLU Forward/Backward 등 프로젝트의 모든 연산에 적용하였다
+
 #### 불필요한 메모리 복사 최적화
 
 #### dX 연산 삭제 (Dense.hpp)
@@ -59,20 +59,30 @@ void Backward(const Matrix& dOut) {
 ### 행 단위 연산 변경
 - Before
 <img width="631" height="550" alt="Image" src="https://github.com/user-attachments/assets/5629467b-e76c-4bbe-b975-99c4bf3c70e7" />
+
 - After
 <img width="620" height="539" alt="Image" src="https://github.com/user-attachments/assets/7e366b91-7e33-4f6a-9e67-fefcac4804e0" />
 
 ### 불필요한 dX 연산 삭제/메모리 복사 최적화
 - Before
+<img width="620" height="539" alt="Image" src="https://github.com/user-attachments/assets/7e366b91-7e33-4f6a-9e67-fefcac4804e0" />
+
 - After
+<img width="632" height="542" alt="Image" src="https://github.com/user-attachments/assets/742b4b2f-e863-4ed1-bfcf-ea0187835bf9" />
 
 ### OpenMP, AVX
 - Before
+<img width="632" height="542" alt="Image" src="https://github.com/user-attachments/assets/742b4b2f-e863-4ed1-bfcf-ea0187835bf9" />
+
 - After
+<img width="621" height="554" alt="Image" src="https://github.com/user-attachments/assets/11c9f10d-f802-4a62-90f5-fb6888d1e247" />
 
 ### 프로젝트 속성 변경
 - Before
+<img width="621" height="554" alt="Image" src="https://github.com/user-attachments/assets/11c9f10d-f802-4a62-90f5-fb6888d1e247" />
+
 - After
+<img width="625" height="546" alt="Image" src="https://github.com/user-attachments/assets/21b58bfd-5405-4f2c-b5a5-b6cae12e8c79" />
 
 ## 팀원들의 역할
 - 강은우(조장): 자료조사, 행 단위 연산 변경 구현
