@@ -33,7 +33,7 @@ namespace vsnn {
 			const int C = probs_.Cols();
 			if (dLogits.Rows() != N || dLogits.Cols() != C) dLogits.Reset(N, C);
 			// dLogits = probs
-			for (size_t i = 0; i < probs_.Raw().size(); ++i) dLogits.Raw()[i] = probs_.Raw()[i];
+			memcpy(&dLogits.Raw()[0], &probs_.Raw()[0], sizeof(float) * N * C);
 			for (int n = 0; n < N; ++n) dLogits(n, y[n]) -= 1.0f;
 			const float invN = 1.0f / static_cast<float>(N);
 			for (auto& v : dLogits.Raw()) v *= invN;

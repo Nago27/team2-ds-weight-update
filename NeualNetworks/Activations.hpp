@@ -10,6 +10,6 @@ namespace vsnn {
 	class ReLU : public Layer {
 	public:
 		void Forward(const Matrix& X, Matrix& Y) override { Ops::ReLUForward(X, Y); }
-		void Backward(const Matrix& X, const Matrix& dY, Matrix& dX) override { Ops::ReLUBackward(X, dY, dX); }
+		void Backward(const Matrix& X, const Matrix& dY, Matrix& dX, int i) override { Ops::ReLUBackward(X, dY, dX); }
 	};
 }

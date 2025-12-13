@@ -42,12 +42,14 @@ namespace vsnn {
 				Matrix& W = D->WRef(); Matrix& gW = D->gWRef();
 				Matrix& b = D->bRef(); Matrix& gb = D->gbRef();
 				// W update
-				for (size_t t = 0; t < W.Raw().size(); ++t) {
+#pragma omp parallel for
+				for (int t = 0; t < W.Raw().size(); ++t) {
 					W.Raw()[t] -= lr * gW.Raw()[t];
 				}
 				// b update
+#pragma omp parallel for
 				for (int j = 0; j < b.Cols(); ++j) {
-					b(0, j) -= lr * gb(0, j);
+					b.Raw()[j] -= lr * gb.Raw()[j];
 				}
 			}
 		}
