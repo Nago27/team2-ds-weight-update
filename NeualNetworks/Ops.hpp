@@ -28,7 +28,7 @@ namespace vsnn {
 						const __m256 a_vec = _mm256_set1_ps(a[j]);
 						const float* b = &B.Raw()[(size_t)j * N];
 						int k = 0;
-						for (; k + 8 < N; k += 8) {
+						for (; k + 8 <= N; k += 8) {
 							__m256 b_vec = _mm256_loadu_ps(b + k);
 							__m256 c_vec = _mm256_loadu_ps(c + k);
 							c_vec = _mm256_fmadd_ps(a_vec, b_vec, c_vec);
@@ -55,7 +55,7 @@ namespace vsnn {
 						__m256 sum_vec = _mm256_setzero_ps();
 						const float* b = &BT.Raw()[(size_t)j * K];
 						int k = 0;
-						for (; k + 8 < K; k += 8) {
+						for (; k + 8 <= K; k += 8) {
 							__m256 a_vec = _mm256_loadu_ps(a + k);
 							__m256 b_vec = _mm256_loadu_ps(b + k);
 							sum_vec = _mm256_fmadd_ps(a_vec, b_vec, sum_vec);
@@ -90,7 +90,7 @@ namespace vsnn {
 							const __m256 a_vec = _mm256_set1_ps(a[j]);
 							float* c = &c_local[(size_t)j * N];
 							int k = 0;
-							for (; k + 8 < N; k += 8) {
+							for (; k + 8 <= N; k += 8) {
 								__m256 b_vec = _mm256_loadu_ps(b + k);
 								__m256 c_vec = _mm256_loadu_ps(c + k);
 								c_vec = _mm256_fmadd_ps(a_vec, b_vec, c_vec);
@@ -106,7 +106,7 @@ namespace vsnn {
 						float* c_global = &C.Raw()[0];
 						const float* c_local_ = &c_local[0];
 						int i = 0;
-						for (; i + 8 < K * N; i += 8) {
+						for (; i + 8 <= K * N; i += 8) {
 							__m256 c__global = _mm256_loadu_ps(c_global + i);
 							__m256 c__local = _mm256_loadu_ps(c_local_ + i);
 							__m256 c_sum = _mm256_add_ps(c__global, c__local);
@@ -131,7 +131,7 @@ namespace vsnn {
 							const __m256 b_vec = _mm256_set1_ps(b[j]);
 							float* c = &c_local[(size_t)j * K];
 							int k = 0;
-							for (; k + 8 < K; k += 8) {
+							for (; k + 8 <= K; k += 8) {
 								const __m256 a_vec = _mm256_loadu_ps(a + k);
 								__m256 c_vec = _mm256_loadu_ps(c + k);
 								c_vec = _mm256_fmadd_ps(a_vec, b_vec, c_vec);
@@ -147,7 +147,7 @@ namespace vsnn {
 						float* c_global = &CT.Raw()[0];
 						const float* c_local_ = &c_local[0];
 						int i = 0;
-						for (; i + 8 < K * N; i += 8) {
+						for (; i + 8 <= K * N; i += 8) {
 							__m256 c__global = _mm256_loadu_ps(c_global + i);
 							__m256 c__local = _mm256_loadu_ps(c_local_ + i);
 							__m256 c_sum = _mm256_add_ps(c__global, c__local);
@@ -185,7 +185,7 @@ namespace vsnn {
 					const __m256 a_vec = _mm256_set1_ps(a[j]);
 					const float* b = &BT.Raw()[(size_t)j * N];
 					int k = 0;
-					for (; k + 8 < N; k += 8) {
+					for (; k + 8 <= N; k += 8) {
 						__m256 b_vec = _mm256_loadu_ps(b + k);
 						__m256 c_vec = _mm256_loadu_ps(c + k);
 						c_vec = _mm256_fmadd_ps(a_vec, b_vec, c_vec);

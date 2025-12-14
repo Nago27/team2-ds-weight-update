@@ -39,7 +39,7 @@ namespace vsnn {
 				for (i32 i = 0; i < X.Rows(); ++i) {
 					const float* dY_ptr = &dY.Raw()[(size_t)i * num_cols];
 					i32 j = 0;
-					for (; j + 8 < num_cols; j += 8) {
+					for (; j + 8 <= num_cols; j += 8) {
 						__m256 dy = _mm256_loadu_ps(dY_ptr + j);
 						__m256 gb = _mm256_loadu_ps(&gb_local[0] + j);
 						gb = _mm256_add_ps(gb, dy);
