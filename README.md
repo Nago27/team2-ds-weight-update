@@ -85,7 +85,7 @@ AddRowBias나 ReLUForward등 다른 모든 행렬 연산에서도 행 단위 접
 <img width="621" height="554" alt="Image" src="https://github.com/user-attachments/assets/11c9f10d-f802-4a62-90f5-fb6888d1e247" />
 
 - After
-<img width="625" height="546" alt="Image" src="https://github.com/user-attachments/assets/21b58bfd-5405-4f2c-b5a5-b6cae12e8c79" />
+<img width="618" height="545" alt="Image" src="https://github.com/user-attachments/assets/b841c0bb-4096-4f22-abc0-28a0d7716b22" />
 
 ## 팀원들의 역할
 - 강은우(조장): 자료조사, 행 단위 연산 변경 구현
