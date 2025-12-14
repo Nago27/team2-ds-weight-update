@@ -41,15 +41,19 @@ namespace vsnn {
 				if (!D) continue;
 				Matrix& W = D->WRef(); Matrix& gW = D->gWRef();
 				Matrix& b = D->bRef(); Matrix& gb = D->gbRef();
+
+				float* w = &W.Raw()[0], * b_ = &b.Raw()[0];
+				const float* gw = &gW.Raw()[0], * gb_ = &gb.Raw()[0];
+				const int W_size= W.Raw().size(), b_cols = b.Cols();
 				// W update
 #pragma omp parallel for
-				for (int t = 0; t < W.Raw().size(); ++t) {
-					W.Raw()[t] -= lr * gW.Raw()[t];
+				for (int t = 0; t < W_size; ++t) {
+					w[t] -= lr * gw[t];
 				}
 				// b update
 #pragma omp parallel for
-				for (int j = 0; j < b.Cols(); ++j) {
-					b.Raw()[j] -= lr * gb.Raw()[j];
+				for (int j = 0; j < b_cols; ++j) {
+					b_[j] -= lr * gb_[j];
 				}
 			}
 		}
