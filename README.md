@@ -18,6 +18,8 @@ for (int i = 0; i < X.Rows(); ++i) {
 	for (int d = 0; d < X.Cols(); ++d) Xs(i, d) = X(idx[i], d);
 	ys[i] = y[idx[i]];
 }
+
+SliceBatch(Xs, ys, beg, end, Xb, yb);
 ```
 ```cpp
 static void SliceBatch(const Matrix& X, const vector<int>& y, int beg, int end, Matrix& Xb, vector<int>& yb) {
