@@ -101,7 +101,7 @@ void Backward(const Matrix& dOut) {
    <br>: 연산 과정에서 데이터가 0인 경우 연산을 생략(```continue```)하는 방식으로 데이터의 희소성을 활용하였습니다.
 6. 기타 연산 최적화
    <br>: ```AddRowBias```나 ```ReLUForward``` 등 다른 모든 행렬 연산에서도 행 단위 접근을 극대화하고 OpenMP, AVX2를 적절히 사용하였습니다.
-7. OpenMP & AVX 적용 방법
+7. OpenMP & AVX2 적용 방법
 - C/C++ > 코드 생성 > 고급 명령 집합 사용 > 고급 벡터 확장 2(X86/X64)(/arxh:AVX2)
 - C/C++ > 언어 > OpenMP 지원 > 예(/openmp)
 
