@@ -4,9 +4,9 @@
 <div align="left">2022203092 이동현</div>
 <div align="left">2022203036 임동건</div>
 
-## [문제점 파악]
-### 행 우선 접근 방식
-- Matrix.hpp에서는 행 우선(row_major) 접근 방식이지만, Ops.hpp, Dense.hpp 에서는 **열 단위**로 접근하여 캐시 미스가 발생합니다.
+## ⌈문제점 파악⌋
+### 행렬 연산에서의 열 단위 접근
+- Matrix.hpp에서는 **행 우선**(row_major) 접근 방식이지만, Ops.hpp와 Dense.hpp 에서는 **열 단위**로 접근하여 캐시 미스가 발생합니다.
 ```cpp
 // vector와 operator를 이용해 행 우선 연속 접근을 하는 Matrix
 class Matrix {
@@ -20,8 +20,9 @@ public:
 ```
 ```cpp
 static void MatMul(const Matrix& X, const Matrix& W, Matrix& Y) {
-  assert(X.Cols() == W.Rows());
+  assert(X.Cols() == W.Rows()); 
   if (Y.Rows() != X.Rows() || Y.Cols() != W.Cols()) Y.Reset(X.Rows(), W.Cols());
+  // 열 우선 접근 방식
   for (i32 n = 0; n < X.Rows(); ++n) {
 	  for (i32 j = 0; j < W.Cols(); ++j) {
 		  float acc = 0.0f;
@@ -96,10 +97,10 @@ void Backward(const Matrix& dOut) {
 ```
 <div style="page-break-after: always;"></div>
 
-## [문제를 해결하기 위한 자료구조]
+## ⌈문제를 해결하기 위한 자료구조⌋
 - 기존 Matrix(row_major)의 사용 방식을 행 단위 연산으로 변경 (자료구조 활용 변경)
 
-## [주요 구현 내용]
+## ⌈주요 구현 내용⌋
 #### 행 연산 변경 및 OpenMP & AVX2 적용
 1. MatMul 함수 분리<br>: 행렬곱 연산마다 행렬의 전치 형태가 다르다는 점을 고려하여 MatMul 함수를 3가지로 분리하였습니다.
    - ```Ops::MatMul1```: $Y = X \times W$ (행 누적 + 전치 행렬 + 희소성 데이터 스킵)
@@ -127,8 +128,6 @@ void Backward(const Matrix& dOut) {
 #### dX 연산 삭제 (Dense.hpp)
 Dense 레이어의 Backward 함수가 현재 자신이 몇 번째 레이어인지 알 수 있도록 인덱스($i$)를 인자로 받게 수정하였습니다.<br>이를 통해 현재 레이어가 입력층($i=0$)인 경우, 무거운 행렬 곱셈 연산인 $dX$ 계산 과정을 아예 **생략**하도록 조건문을 추가하였습니다.
 
-<div style="page-break-after: always;"></div>
-
 #### 프로젝트 속성 변경
 /O2와 /GL 옵션을 적용하여 컴파일 및 링크 단계 최적화를 적용하였고 기본 런타임 검사를 기본값으로 바꿔주어 실행 중 오버헤드를 제거하였습니다.<br>/Zi는 실행 속도에는 영향을 주지 않으나 /GL 사용에 따른 옵션 의존성으로 인해 적용하였습니다.
 
@@ -140,47 +139,49 @@ Dense 레이어의 Backward 함수가 현재 자신이 몇 번째 레이어인�
 
 <div style="page-break-after: always;"></div>
 
-## [실행결과 (전/후 훈련시간 비교)]
+## ⌈실행결과 (전/후 훈련시간 비교)⌋
 ### 행 단위 연산 변경
 - Before
-<img width="480" height="360" alt="Image" src="https://github.com/user-attachments/assets/5629467b-e76c-4bbe-b975-99c4bf3c70e7" />
+<img width="450" height="360" alt="Image" src="https://github.com/user-attachments/assets/5629467b-e76c-4bbe-b975-99c4bf3c70e7" />
 
 - After
-<img width="480" height="360" alt="Image" src="https://github.com/user-attachments/assets/7e366b91-7e33-4f6a-9e67-fefcac4804e0" />
+<img width="450" height="360" alt="Image" src="https://github.com/user-attachments/assets/7e366b91-7e33-4f6a-9e67-fefcac4804e0" />
 <div style="page-break-after: always;"></div>
 
 ### 불필요한 dX 연산 삭제/메모리 복사 최적화
 - Before
-<img width="480" height="360" alt="Image" src="https://github.com/user-attachments/assets/7e366b91-7e33-4f6a-9e67-fefcac4804e0" />
+<img width="450" height="360" alt="Image" src="https://github.com/user-attachments/assets/7e366b91-7e33-4f6a-9e67-fefcac4804e0" />
 
 - After
-<img width="480" height="360" alt="Image" src="https://github.com/user-attachments/assets/742b4b2f-e863-4ed1-bfcf-ea0187835bf9" />
+<img width="450" height="360" alt="Image" src="https://github.com/user-attachments/assets/742b4b2f-e863-4ed1-bfcf-ea0187835bf9" />
 <div style="page-break-after: always;"></div>
 
 ### OpenMP, AVX2
 - Before
-<img width="480" height="360" alt="Image" src="https://github.com/user-attachments/assets/742b4b2f-e863-4ed1-bfcf-ea0187835bf9" />
+<img width="450" height="360" alt="Image" src="https://github.com/user-attachments/assets/742b4b2f-e863-4ed1-bfcf-ea0187835bf9" />
 
 - After
-<img width="480" height="360" alt="Image" src="https://github.com/user-attachments/assets/11c9f10d-f802-4a62-90f5-fb6888d1e247" />
+<img width="450" height="360" alt="Image" src="https://github.com/user-attachments/assets/11c9f10d-f802-4a62-90f5-fb6888d1e247" />
 <div style="page-break-after: always;"></div>
 
 ### 프로젝트 속성 변경
 - Before
-<img width="480" height="360" alt="Image" src="https://github.com/user-attachments/assets/11c9f10d-f802-4a62-90f5-fb6888d1e247" />
+<img width="450" height="360" alt="Image" src="https://github.com/user-attachments/assets/11c9f10d-f802-4a62-90f5-fb6888d1e247" />
 
 - After
-<img width="480" height="360" alt="Image" src="https://github.com/user-attachments/assets/b841c0bb-4096-4f22-abc0-28a0d7716b22" />
+<img width="450" height="360" alt="Image" src="https://github.com/user-attachments/assets/b841c0bb-4096-4f22-abc0-28a0d7716b22" />
 <div style="page-break-after: always;"></div>
 
-## [팀원들의 역할]
+## ⌈팀원들의 역할⌋
 - 강은우(조장): 자료조사, 행 단위 연산 변경 구현
 - 김건우: 자료조사(Eigen 외부 라이브러리 분석), 메모리 복사 최적화
 - 이동현: 자료조사(Eigen 외부 라이브러리 분석), OpenMP 및 AVX2 적용 및 구현
 - 임동건: 자료조사, GitHub 협업 개발 환경 구축, 중간발표 PPT 및 최종 보고서 작성
   
-## [진행 과정 및 일정]
+## ⌈진행 과정 및 일정⌋
 - 3~5주차: 자료조사
 - 6~11주차: 행 연산 변경, 데이터 복사 최적화
+- 12~14주차: OpenMP와 AVX2 적용(병렬처리), 프로젝트 속성 변경
+- 15주차: 최종 보고서 작성
 - 12~14주차: OpenMP와 AVX2 적용(병렬처리), 프로젝트 속성 변경
 - 15주차: 최종 보고서 작성
