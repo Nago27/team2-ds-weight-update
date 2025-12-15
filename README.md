@@ -10,14 +10,15 @@
 - $gW = X^T \times dY$, $gb = ∑rows(dy)$ 계산시 **열 방향**으로 누적되어 비연속 접근이 반복되고 있습니다.
 
 ### 불필요한 연산/복사 비용
-- Trainer.hpp의 Train과 SliceBatch에서 현재 배치 구성시에 깊은 복사가 매 스텝 마다 발생되므로 복사량이 많이 누적되어 시간/메모리 대역폭을 낭비하게 됩니다.
+- Trainer.hpp의 Train과 SliceBatch에서 배치 구성시에 깊은 복사가 매 스텝 마다 발생되므로 복사량이 많이 누적되어 시간/메모리 대역폭을 낭비하게 됩니다.
 ```cpp
-// 셔플 데이터 복사 (간단 버전)
+// Train에서 셔플된 인덱스로 전체 데이터를 복사 하고 SliceBatch로 넘겨 함수 내부에서 한번 더 복사 수행
 Matrix Xs(X.Rows(), X.Cols()); vector<int> ys = y;
 for (int i = 0; i < X.Rows(); ++i) {
 	for (int d = 0; d < X.Cols(); ++d) Xs(i, d) = X(idx[i], d);
 	ys[i] = y[idx[i]];
 }
+
 static void SliceBatch(const Matrix& X, const vector<int>& y, int beg, int end, Matrix& Xb, vector<int>& yb) {
     const int N = end - beg; const int D = X.Cols();
     // 매번 메모리를 재할당하거나 체크함
@@ -84,9 +85,9 @@ void Backward(const Matrix& dOut) {
 #### 행 연산 변경 및 OpenMP & AVX2 적용 (작성중)
 1. MatMul 함수 분리:
    <br>행렬곱 연산마다 행렬의 전치 형태가 다르다는 점을 고려하여 MatMul 함수를 3가지로 분리하였습니다.
-   - ```Ops::MatMul1```: $Y = X \times W$ (행 누적 + 희소성 데이터 스킵)
-   - ```Ops::MatMul2```: $gW = X^T \times dY$ (행 누적 + 희소성 데이터 스킵)
-   - ```Ops::MatMul3```: $dX = dY \times W^T$ (전치 행렬)
+   - ```Ops::MatMul1```: $Y = X \times W$ (행 누적 + 전치 행렬 + 희소성 데이터 스킵)
+   - ```Ops::MatMul2```: $gW = X^T \times dY$ (행 누적 + 전치 행렬 + 희소성 데이터 스킵)
+   - ```Ops::MatMul3```: $dX = dY \times W^T$ (행 누적 + 전치 행렬)
 3. 루프 구조 최적화 (병렬처리): 
    <br>레이어마다 행렬의 크기가 다르다는 것을 고려하여 각 함수의 내부에서도 if문으로 분기를 만들어 총 5가지의 루프를 구현하였습니다.<br>
    각 루프의 순서는 OpenMP(스레드 병렬)/AVX2(SIMD 병렬)를 활용한 병렬화 효율과 스레드 간의 Race Condition을 고려하여 결정하였습니다.
@@ -106,7 +107,7 @@ void Backward(const Matrix& dOut) {
   - Forward  최적화: 벡터의 요소를 직접 참조하여 다음 레이어의 입력과 출력으로 사용하도록 변경함으로써, 불필요한 행렬 복사를 방지하였습니다.
   - Backward 최적화: 역전파 시에도 벡터를 도입하여 미분값 행렬을 별도의 복사 없이 해당 메모리 주소에 직접 기록하도록 개선하였습니다.
 2. Trian과 SliceBatch 메모리 처리 효율화 (memcpy 및 병렬화 적용)
-  - Train에서 셔플된 인덱스로 데이터를 복사해서 넘기는 것이 아닌 셔플된 인덱스를 SliceBatch로 넘기는 방식으로 수정하였습니다.
+  - Train에서 셔플된 인덱스로 전체 데이터를 복사해서 넘기는 것이 아닌 셔플된 인덱스를 SliceBatch로 넘겨서 함수 내부에서 한번만 복사하는 방식으로 수정하였습니다.
   - 기존의 이중 루프를 통한 대입 방식을 memcpy를 활용한 행 단위 블록 메모리 복사로 변경하여 대입 연산 속도를 최적화하였습니다.
   - 배치 생성 과정을 멀티스레드로 병렬화함으로써, 대용량 데이터 복사 시의 처리량을 증대시켰습니다.
 
@@ -150,7 +151,7 @@ void Backward(const Matrix& X, const Matrix& dY, Matrix& dX, int i) override {
 - After
 <img width="632" height="542" alt="Image" src="https://github.com/user-attachments/assets/742b4b2f-e863-4ed1-bfcf-ea0187835bf9" />
 
-### OpenMP, AVX
+### OpenMP, AVX2
 - Before
 <img width="632" height="542" alt="Image" src="https://github.com/user-attachments/assets/742b4b2f-e863-4ed1-bfcf-ea0187835bf9" />
 
