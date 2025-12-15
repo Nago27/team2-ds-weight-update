@@ -121,7 +121,7 @@ void Backward(const Matrix& X, const Matrix& dY, Matrix& dX, int i) override {
 ```
 
 #### 프로젝트 속성 변경 (작성중)
-- C/C++ > 최적하 > 전체 프로그램 최적화 > 예(/GL)
+- C/C++ > 최적화 > 전체 프로그램 최적화 > 예(/GL)
 - C/C++ > 일반 > 디버그 정보 형식 > 프로그램 데이터베이스(/Zi)
 
 ## 실행 결과 (전/후 훈련시간 비교)
