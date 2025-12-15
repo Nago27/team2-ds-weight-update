@@ -6,9 +6,31 @@
 
 ## 문제점 파악
 ### 행 우선 접근 방식
-- Matrix.hpp에서는 행 우선(row_major) 접근 방식이지만, Ops.hpp, Dense.hpp 에서는 **열 방향**으로 접근하여 캐시 미스가 발생합니다.
-- $gW = X^T \times dY$, $gb = ∑rows(dy)$ 계산시 **열 방향**으로 누적되어 비연속 접근이 반복되고 있습니다.
-
+- Matrix.hpp에서는 행 우선(row_major) 저장 방식이지만, Ops.hpp, Dense.hpp 에서는 **열 단위**로 접근하여 캐시 미스가 발생합니다.
+```cpp
+// vector와 operator를 이용해 행 우선 연속 저장을 하는 Matrix
+class Matrix {
+	private:
+		i32 rows_ = 0, cols_ = 0;
+		vector<f32> data_;
+	public:
+		inline f32 operator()(i32 r, i32 c) const { return data_[static_cast<size_t>(r) * cols_ + c]; }
+	};
+```
+```cpp
+// W에 열 단위로 접근하는 연산
+static void MatMul(const Matrix& X, const Matrix& W, Matrix& Y) {
+			assert(X.Cols() == W.Rows());
+			if (Y.Rows() != X.Rows() || Y.Cols() != W.Cols()) Y.Reset(X.Rows(), W.Cols());
+			for (i32 n = 0; n < X.Rows(); ++n) {
+				for (i32 j = 0; j < W.Cols(); ++j) {
+					float acc = 0.0f;
+					for (i32 k = 0; k < X.Cols(); ++k) acc += X(n, k) * W(k, j);
+					Y(n, j) = acc;
+				}
+			}
+		}
+```
 ### 불필요한 연산/복사 비용
 - Trainer.hpp의 Train과 SliceBatch에서 배치 구성시에 깊은 복사가 매 스텝 마다 발생되므로 복사량이 많이 누적되어 시간/메모리 대역폭을 낭비하게 됩니다.
 ```cpp
