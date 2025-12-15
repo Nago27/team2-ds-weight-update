@@ -35,7 +35,7 @@ static void MatMul(const Matrix& X, const Matrix& W, Matrix& Y) {
 ### 불필요한 연산/복사 비용
 - Trainer.hpp의 Train과 SliceBatch에서 배치 구성시에 깊은 복사가 매 스텝 마다 발생되므로 복사량이 많이 누적되어 시간/메모리 대역폭을 낭비하게 됩니다.
 ```cpp
-// Train에서 셔플된 인덱스로 전체 데이터를 복사 하고 SliceBatch로 넘겨 함수 내부에서 한번 더 복사 수행
+// Train에서 셔플된 인덱스로 전체 데이터를 복사하고 SliceBatch로 넘겨 함수 내부에서 한번 더 복사 수행
 Matrix Xs(X.Rows(), X.Cols()); vector<int> ys = y;
 for (int i = 0; i < X.Rows(); ++i) {
 	for (int d = 0; d < X.Cols(); ++d) Xs(i, d) = X(idx[i], d);
@@ -43,15 +43,15 @@ for (int i = 0; i < X.Rows(); ++i) {
 }
 SliceBatch(Xs, ys, beg, end, Xb, yb);
 
-static void SliceBatch(const Matrix& X, const vector<int>& y, int beg, int end, Matrix& Xb, vector<int>& yb) {
+static void SliceBatch(const Matrix& X, const vector<int>& y, int beg, 
+                        int end, Matrix& Xb, vector<int>& yb) {
     const int N = end - beg; const int D = X.Cols();
-    // 매번 메모리를 재할당하거나 체크함
     if (Xb.Rows() != N || Xb.Cols() != D) Xb.Reset(N, D);
     yb.resize(N);
     // [문제점] 이중 루프를 돌며 원본 데이터를 또 다른 메모리 공간(Xb)으로 '깊은 복사' 수행
     for (int i = 0; i < N; ++i) {
         for (int d = 0; d < D; ++d) Xb(i, d) = X(beg + i, d); // 값 복사 발생
-        yb[i] = y[beg + i];
+     yb[i] = y[beg + i];
     }
 }
 ```
@@ -181,7 +181,5 @@ Dense 레이어의 Backward 함수가 현재 자신이 몇 번째 레이어인�
 ## ⌈진행 과정 및 일정⌋
 - 3~5주차: 자료조사
 - 6~11주차: 행 연산 변경, 데이터 복사 최적화
-- 12~14주차: OpenMP와 AVX2 적용(병렬처리), 프로젝트 속성 변경
-- 15주차: 최종 보고서 작성
 - 12~14주차: OpenMP와 AVX2 적용(병렬처리), 프로젝트 속성 변경
 - 15주차: 최종 보고서 작성
