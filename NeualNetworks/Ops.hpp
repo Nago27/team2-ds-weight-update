@@ -12,8 +12,8 @@ using namespace std;
 namespace vsnn {
 	class Ops {
 	public:
-		// ¸ðµç Çà·Ä ¿¬»ê¿¡ Çà ´ÜÀ§ Á¢±Ù/AVX2/OpenMP¸¦ ÀûÀýÈ÷ È°¿ë
-		// MatMulÀ» MatMul1/2/3·Î ºÐ¸®ÇÏ¿© Çà·Ä Å©±â/ÀüÄ¡ ÇüÅÂ¿¡ ¸Â´Â ·çÇÁ ±¸Çö
+		// ëª¨ë“  í–‰ë ¬ ì—°ì‚°ì— í–‰ ë‹¨ìœ„ ì ‘ê·¼/AVX2/OpenMPë¥¼ ì ì ˆížˆ í™œìš©
+		// MatMulì„ MatMul1/2/3ë¡œ ë¶„ë¦¬í•˜ì—¬ í–‰ë ¬ í¬ê¸°/ì „ì¹˜ í˜•íƒœì— ë§žëŠ” ë£¨í”„ êµ¬í˜„
 		// Y = X * W
 		static void MatMul1(const Matrix& A, const Matrix& B, Matrix& C) {
 			int M = A.Rows(), K = A.Cols(), N = B.Cols();
@@ -77,7 +77,7 @@ namespace vsnn {
 			int M = A.Rows(), K = A.Cols(), N = B.Cols();
 			if (C.Rows() != K || C.Cols() != N) C.Reset(K, N);
 
-			if (N > K) {
+			if (K < N) {
 #pragma omp parallel 
 				{
 					vector<float> c_local(K * N, 0.0f);
