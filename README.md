@@ -112,7 +112,7 @@ void Backward(const Matrix& dOut) {
 5. 기타 연산 최적화<br>: ```AddRowBias```나 ```ReLUForward``` 등 다른 모든 행렬 연산에서도 행 단위 접근을 극대화하고 OpenMP, AVX2를 적절히 사용하였습니다.
 6. OpenMP & AVX2 적용 방법
 	- C/C++ > 언어 > OpenMP 지원 > 예(/openmp)
-	- C/C++ > 코드 생성 > 고급 명령 집합 사용 > 고급 벡터 확장 2(X86/X64)(/arxh:AVX2)
+	- C/C++ > 코드 생성 > 고급 명령 집합 사용 > 고급 벡터 확장 2(X86/X64)(/arch:AVX2)
 	- ```#include <immintrin.h>``` 추가
 <div style="page-break-after: always;"></div>
 
