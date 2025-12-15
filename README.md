@@ -6,12 +6,26 @@
 
 ## 문제점 파악
 ### 행 우선 접근 방식
-- Matrix.hpp에서는 행 우선(row_major) 접근 방식이지만, Ops.hpp, Dense.hpp 에서는 ‘열‘ 방향으로 접근하여 캐시 미스가 발생
-- $gW = X^T \times dY$, $gb = ∑rows(dy)$ 계산시 **열 방향**으로 누적되어 비연속 접근이 반복되고 있음
+- Matrix.hpp에서는 행 우선(row_major) 접근 방식이지만, Ops.hpp, Dense.hpp 에서는 ‘열‘ 방향으로 접근하여 캐시 미스가 발생합니다.
+- $gW = X^T \times dY$, $gb = ∑rows(dy)$ 계산시 **열 방향**으로 누적되어 비연속 접근이 반복되고 있습니다.
 
 ### 불필요한 연산/복사 비용
-- SliceBatch에서 현재 배치 구성시에 깊은 복사가 매 스텝 마다 발생되므로 복사량이 많이 누적되어 시간/메모리 대역폭을 잡아먹음
-- Sequential.hpp의 forward(), backward()에서 불필요한 복사 과정이 있다.
+- SliceBatch에서 현재 배치 구성시에 깊은 복사가 매 스텝 마다 발생되므로 복사량이 많이 누적되어 시간/메모리 대역폭을 낭비하게 됩니다.
+```cpp
+static void SliceBatch(const Matrix& X, const vector<int>& y, int beg, int end, Matrix& Xb, vector<int>& yb) {
+    const int N = end - beg; const int D = X.Cols();
+    // 매번 메모리를 재할당하거나 체크함
+    if (Xb.Rows() != N || Xb.Cols() != D) Xb.Reset(N, D);
+    yb.resize(N);
+    
+    // [문제점] 이중 루프를 돌며 원본 데이터를 또 다른 메모리 공간(Xb)으로 '깊은 복사' 수행
+    for (int i = 0; i < N; ++i) {
+        for (int d = 0; d < D; ++d) Xb(i, d) = X(beg + i, d); // 값 복사 발생
+        yb[i] = y[beg + i];
+    }
+}
+```
+- Sequential.hpp의 forward(), backward()에서 레이어 간 데이터 전달시 전체 데이터의 깊은 복사를 반복적으로 수행하고 있어서 실제 연산보다 메모리 상에서 이동시키는 데 과도한 시간이 소요됩니다.
 ```cpp
 void Forward(const Matrix& X, Matrix& out) {
    acts_.resize(layers_.size() + 1);
@@ -33,29 +47,77 @@ void Backward(const Matrix& dOut) {
 }
 ```
 - 불필요한 연산 dX
+  현재 역전파 과정에서 Dense 레이어는 입력 데이터에 대한 기울기 dX를 계산하는데, 맨 처음 입력층에서 계산된 dX는 이전 단계가 없으므로 사용되지 않고 버려집니다.
 ```cpp
+// [Dense.hpp] void Backward(...) 내부
+if (dX.Rows() != X.Rows() || dX.Cols() != W_.Rows()) dX.Reset(X.Rows(), W_.Rows());
+for (i32 i = 0; i < X.Rows(); ++i) {
+    for (i32 k = 0; k < W_.Rows(); ++k) {
+        float acc = 0.0f; 
+        for (i32 j = 0; j < W_.Cols(); ++j) acc += dY(i, j) * W_(k, j); // 불필요한 연산
+        dX(i, k) = acc;
+    }
+}
+
+// [Sequential.hpp]
+void Backward(const Matrix& dOut) {
+    Matrix cur_d = dOut, prev_d;
+    // 레이어를 거꾸로 타고 올라감
+    for (int i = static_cast<int>(layers_.size()) - 1; i >= 0; --i) {
+        // i=0 (입력층)일 때도 prev_d(dX)를 계산함.
+        layers_[i]->Backward(acts_[i], cur_d, prev_d);
+        cur_d = prev_d; // i=0일 때 계산된 cur_d는 루프 종료 후 버려짐 (낭비)
+    }
+}
 ```
 
 ## 문제를 해결하기 위한 자료구조    
 - 기존 Matrix(row_major)의 사용 방식을 행 단위 연산으로 변경 (자료구조 활용 변경)
 
 ## 주요 구현 내용
-#### 행 연산 변경 및 OpenMP & AVX 적용
-- Ops::MatMul1: $Y = X \times W$ (행 누적 + 희소성 데이터 스킵)
-- Ops::MatMul2: $gW = X^T \times dY$ (행 누적 + 희소성 데이터 스킵)
-- Ops::MatMul3: $dX = dY \times W^T$ (전치 행렬)
-- AddRowBias 수정
-- ReLU Forward/Backward 연산
-
-시간을 가장 많이 차지하는 행렬곱 연산을 Row_major 방식으로 저장된 자료구조의 특성을 가장 잘 활용할 수 있는 구조로 바꾸었다. 먼저 행렬곱 연산마다 행렬의 전치 형태($A \times B$, $A^T \times B$ 등)가 다르다는 점을 고려하여 MatMul 함수를 3가지로 분리하였다. 또한 레이어마다 행렬의 크기가 다르다는 것을 고려하여 각 함수의 내부에서도 if문으로 분기를 만들어 총 5가지의 루프를 구현하였다. 각 루프의 순서는 OpenMP(스레드 병렬)/AVX2(SIMD 병렬)를 활용한 병렬화 효율과 스레드간의 race condition을 고려하여 결정하였다. 루프 순서를 바꾸는 과정에서 열 단위 접근이 발생하는 행렬은 함수 내부에서 전치 행렬을 생성하여 연산에 활용함으로써 비효율적인 열 단위 접근을 행 단위 접근으로 변환하였다. 결과적으로 루프의 순서가 바뀌더라도 Row_major로 저장된 연속적인 자료구조를 순차적으로 읽을 수 있게 되어 메모리의 연속성을 극대화하고 캐시 미스를 최소화하였다.
-추가적으로 연산 과정에서 데이터가 0인 경우 연산을 생략하는 방식으로 데이터의 희소성도 활용하였다.
-AddRowBias나 ReLUForward등 다른 모든 행렬 연산에서도 행 단위 접근을 극대화하고 OpenMP, AVX2를 적절히 사용하였다.
+#### 행 연산 변경 및 OpenMP & AVX 적용 (작성중)
+1. MatMul 함수 분리:
+   <br>행렬곱 연산마다 행렬의 전치 형태가 다르다는 점을 고려하여 MatMul 함수를 3가지로 분리하였습니다.
+   - ```Ops::MatMul1```: $Y = X \times W$ (행 누적 + 희소성 데이터 스킵)
+   - ```Ops::MatMul2```: $gW = X^T \times dY$ (행 누적 + 희소성 데이터 스킵)
+   - ```Ops::MatMul3```: $dX = dY \times W^T$ (전치 행렬)
+3. 루프 구조 최적화: 
+   <br>레이어마다 행렬의 크기가 다르다는 것을 고려하여 각 함수의 내부에서도 if문으로 분기를 만들어 총 5가지의 루프를 구현하였습니다.<br>
+   각 루프의 순서는 OpenMP(스레드 병렬)/AVX2(SIMD 병렬)를 활용한 병렬화 효율과 스레드 간의 Race Condition을 고려하여 결정하였습니다.
+4. Row-major 연속 접근 유지로 캐시 효율 극대화
+   <br>: 루프 순서를 바꾸는 과정에서 열 단위 접근이 발생하는 행렬은 함수 내부에서 전치 행렬을 생성하여 연산에 활용함으로써, 비효율적인 열 단위 접근을 행 단위 접근으로 변환하였습니다.
+   결과적으로 루프의 순서가 바뀌더라도 Row_major로 저장된 연속적인 자료구조를 순차적으로 읽을 수 있게 되어 메모리의 연속성을 극대화하고 캐시 미스를 최소화하였습니다.
+5. 희소성 활용
+   <br>: 연산 과정에서 데이터가 0인 경우 연산을 생략(```continue```)하는 방식으로 데이터의 희소성을 활용하였습니다.
+6. 기타 연산 최적화
+   <br>: ```AddRowBias```나 ```ReLUForward``` 등 다른 모든 행렬 연산에서도 행 단위 접근을 극대화하고 OpenMP, AVX2를 적절히 사용하였습니다.
 
 #### 불필요한 메모리 복사 최적화
+1. Sequential 클래스의 데이터 전달 구조 개선
+  - Forward  최적화: 벡터의 요소를 직접 참조하여 다음 레이어의 입력과 출력으로 사용하도록 변경함으로써, 불필요한 행렬 복사를 방지하였습니다.
+  - Backward 최적화: 역전파 시에도 벡터를 도입하여 미분값 행렬을 별도의 복사 없이 해당 메모리 주소에 직접 기록하도록 개선하였습니다.
+2. SliceBatch 메모리 처리 효율화 (memcpy 및 병렬화 적용)
+  - 기존의 이중 루프를 통한 대입 방식을 memcpy를 활용한 행 단위 블록 메모리 복사로 변경하여 대입 연산 속도를 최적화하였습니다.
+  - 배치 생성 과정을 멀티스레드로 병렬화함으로써, 대용량 데이터 복사 시의 처리량을 증대시켰습니다.
 
 #### dX 연산 삭제 (Dense.hpp)
+Dense 레이어의 Backward 함수가 현재 자신이 몇 번째 레이어인지 알 수 있도록 인덱스($i$)를 인자로 받게 수정하였습니다. <br>
+이를 통해 현재 레이어가 입력층($i=0$)인 경우, 무거운 행렬 곱셈 연산인 $dX$ 계산 과정을 아예 **생략**하도록 조건문을 추가하였습니다.
+```cpp
+// 수정된 Backward 함수: 레이어 인덱스 'i'를 매개변수로 추가
+void Backward(const Matrix& X, const Matrix& dY, Matrix& dX, int i) override {
+    // 가중치(gW) 및 편향(gb) 기울기는 정상적으로 업데이트
+    Ops::MatMul2(X, dY, gW_);
 
-#### 프로젝트 속성 변경
+    // dX (입력에 대한 기울기) 계산 최적화
+    // 입력층(i=0)일 경우, 이전 층으로 전파할 오차가 없으므로 계산을 수행하지 않음.
+    if (i != 0) {
+        Ops::MatMul3(dY, W_, dX);
+    }
+}
+```
+
+#### 프로젝트 속성 변경 (작성중)
 
 
 ## 실행 결과 (전/후 훈련시간 비교)
