@@ -10,26 +10,25 @@
 ```cpp
 // vector와 operator를 이용해 행 우선 연속 접근을 하는 Matrix
 class Matrix {
-	private:
-		i32 rows_ = 0, cols_ = 0;
-		vector<f32> data_;
-	public:
-		inline f32 operator()(i32 r, i32 c) const { return data_[static_cast<size_t>(r) * cols_ + c]; }
-	};
+private:
+	i32 rows_ = 0, cols_ = 0;
+	vector<f32> data_;
+public:
+	inline f32 operator()(i32 r, i32 c) const { return data_[static_cast<size_t>(r) * cols_ + c]; }
+};
 ```
 ```cpp
-// W에 열 단위로 접근하는 연산
 static void MatMul(const Matrix& X, const Matrix& W, Matrix& Y) {
-			assert(X.Cols() == W.Rows());
-			if (Y.Rows() != X.Rows() || Y.Cols() != W.Cols()) Y.Reset(X.Rows(), W.Cols());
-			for (i32 n = 0; n < X.Rows(); ++n) {
-				for (i32 j = 0; j < W.Cols(); ++j) {
-					float acc = 0.0f;
-					for (i32 k = 0; k < X.Cols(); ++k) acc += X(n, k) * W(k, j);
-					Y(n, j) = acc;
-				}
-			}
+	assert(X.Cols() == W.Rows());
+	if (Y.Rows() != X.Rows() || Y.Cols() != W.Cols()) Y.Reset(X.Rows(), W.Cols());
+	for (i32 n = 0; n < X.Rows(); ++n) {
+		for (i32 j = 0; j < W.Cols(); ++j) {
+			float acc = 0.0f;
+			for (i32 k = 0; k < X.Cols(); ++k) acc += X(n, k) * W(k, j); //W에 열 단위 접근
+			Y(n, j) = acc;
 		}
+	}
+}
 ```
 ### 불필요한 연산/복사 비용
 - Trainer.hpp의 Train과 SliceBatch에서 배치 구성시에 깊은 복사가 매 스텝 마다 발생되므로 복사량이 많이 누적되어 시간/메모리 대역폭을 낭비하게 됩니다.
