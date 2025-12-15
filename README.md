@@ -40,47 +40,7 @@ void Forward(const Matrix& X, Matrix& out) {
 }
 void Backward(const Matrix& dOut) {
    Matrix cur_d = dOut, prev_d;
-   for (int i = static_cast<int>(layers_.size()) - 1; i >= 0; --i) {
-      layers_[i]->Backward(acts_[i], cur_d, prev_d);
-      cur_d = prev_d;
-   }
-}
-```
-- 불필요한 연산 dX
-  현재 역전파 과정에서 Dense 레이어는 입력 데이터에 대한 기울기 dX를 계산하는데, 맨 처음 입력층에서 계산된 dX는 이전 단계가 없으므로 사용되지 않고 버려집니다.
-```cpp
-// [Dense.hpp] void Backward(...) 내부
-if (dX.Rows() != X.Rows() || dX.Cols() != W_.Rows()) dX.Reset(X.Rows(), W_.Rows());
-for (i32 i = 0; i < X.Rows(); ++i) {
-    for (i32 k = 0; k < W_.Rows(); ++k) {
-        float acc = 0.0f; 
-        for (i32 j = 0; j < W_.Cols(); ++j) acc += dY(i, j) * W_(k, j); // 불필요한 연산
-        dX(i, k) = acc;
-    }
-}
-
-// [Sequential.hpp]
-void Backward(const Matrix& dOut) {
-    Matrix cur_d = dOut, prev_d;
-    // 레이어를 거꾸로 타고 올라감
-    for (int i = static_cast<int>(layers_.size()) - 1; i >= 0; --i) {
-        // i=0 (입력층)일 때도 prev_d(dX)를 계산함.
-        layers_[i]->Backward(acts_[i], cur_d, prev_d);
-        cur_d = prev_d; // i=0일 때 계산된 cur_d는 루프 종료 후 버려짐 (낭비)
-    }
-}
-```
-
-## 문제를 해결하기 위한 자료구조    
-- 기존 Matrix(row_major)의 사용 방식을 행 단위 연산으로 변경 (자료구조 활용 변경)
-
-## 주요 구현 내용
-#### 행 연산 변경 및 OpenMP & AVX 적용 (작성중)
-1. MatMul 함수 분리:
-   <br>행렬곱 연산마다 행렬의 전치 형태가 다르다는 점을 고려하여 MatMul 함수를 3가지로 분리하였습니다.
-   - ```Ops::MatMul1```: $Y = X \times W$ (행 누적 + 희소성 데이터 스킵)
-   - ```Ops::MatMul2```: $gW = X^T \times dY$ (행 누적 + 희소성 데이터 스킵)
-   - ```Ops::MatMul3```: $dX = dY \times W^T$ (전치 행렬)
+   for (int i = static_cast<int>(layers_.size()) - 1; i >= 0; -렬)
 3. 루프 구조 최적화 (병렬처리): 
    <br>레이어마다 행렬의 크기가 다르다는 것을 고려하여 각 함수의 내부에서도 if문으로 분기를 만들어 총 5가지의 루프를 구현하였습니다.<br>
    각 루프의 순서는 OpenMP(스레드 병렬)/AVX2(SIMD 병렬)를 활용한 병렬화 효율과 스레드 간의 Race Condition을 고려하여 결정하였습니다.
@@ -91,7 +51,7 @@ void Backward(const Matrix& dOut) {
    <br>: 연산 과정에서 데이터가 0인 경우 연산을 생략(```continue```)하는 방식으로 데이터의 희소성을 활용하였습니다.
 6. 기타 연산 최적화
    <br>: ```AddRowBias```나 ```ReLUForward``` 등 다른 모든 행렬 연산에서도 행 단위 접근을 극대화하고 OpenMP, AVX2를 적절히 사용하였습니다.
-7. OpenMP & AVX 적용 방법
+7. OpenMP & AVX2 적용 방법
    - C/C++ > 코드 생성 > 고급 명령 집합 사용 > 고급 벡터 확장 2(X86/X64)(/arxh:AVX2)
    - C/C++ > 언어 > OpenMP 지원 > 예(/openmp)
 
@@ -121,8 +81,11 @@ void Backward(const Matrix& X, const Matrix& dY, Matrix& dX, int i) override {
 ```
 
 #### 프로젝트 속성 변경 (작성중)
+- C/C++ > 최적화 > 최대 최적화(속도 우선)(/O2)
 - C/C++ > 최적화 > 전체 프로그램 최적화 > 예(/GL)
+- C/C++ > 코드 생성 > 기본 런타임 검사 > 기본값
 - C/C++ > 일반 > 디버그 정보 형식 > 프로그램 데이터베이스(/Zi)
+/O2와 /GL 옵션을 적용하여 코드 최적화 및 링크 단계 최적화를 적용하였고 기본 런타임 검사를 기본값으로 바꿔주어 실행 중 오버헤드를 제거하였다.
 
 ## 실행 결과 (전/후 훈련시간 비교)
 ### 행 단위 연산 변경
@@ -139,7 +102,7 @@ void Backward(const Matrix& X, const Matrix& dY, Matrix& dX, int i) override {
 - After
 <img width="632" height="542" alt="Image" src="https://github.com/user-attachments/assets/742b4b2f-e863-4ed1-bfcf-ea0187835bf9" />
 
-### OpenMP, AVX
+### OpenMP, AVX2
 - Before
 <img width="632" height="542" alt="Image" src="https://github.com/user-attachments/assets/742b4b2f-e863-4ed1-bfcf-ea0187835bf9" />
 
@@ -156,11 +119,11 @@ void Backward(const Matrix& X, const Matrix& dY, Matrix& dX, int i) override {
 ## 팀원들의 역할
 - 강은우(조장): 자료조사, 행 단위 연산 변경 구현
 - 김건우: 자료조사(Eigen 외부 라이브러리 분석), 메모리 복사 최적화
-- 이동현: 자료조사(Eigen 외부 라이브러리 분석), OpenMP 및 AVX 적용 및 구현
+- 이동현: 자료조사(Eigen 외부 라이브러리 분석), OpenMP 및 AVX2 적용 및 구현
 - 임동건: 자료조사, GitHub 협업 개발 환경 구축, 중간발표 PPT 및 최종보고서 작성
   
 ## 진행 과정 및 일정
 - 3~5주차: 자료조사
 - 6~11주차: 행 연산 변경, 데이터 복사 최적화
-- 12~14주차: OpenMP와 AVX 적용, 프로젝트 속성 변경
+- 12~14주차: OpenMP와 AVX2 적용, 프로젝트 속성 변경
 - 15주차: 최종 보고서 작성
