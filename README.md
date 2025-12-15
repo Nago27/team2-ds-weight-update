@@ -126,19 +126,7 @@ void Backward(const Matrix& dOut) {
 
 #### dX 연산 삭제 (Dense.hpp)
 Dense 레이어의 Backward 함수가 현재 자신이 몇 번째 레이어인지 알 수 있도록 인덱스($i$)를 인자로 받게 수정하였습니다.<br>이를 통해 현재 레이어가 입력층($i=0$)인 경우, 무거운 행렬 곱셈 연산인 $dX$ 계산 과정을 아예 **생략**하도록 조건문을 추가하였습니다.
-```cpp
-// 수정된 Backward 함수: 레이어 인덱스 'i'를 매개변수로 추가
-void Backward(const Matrix& X, const Matrix& dY, Matrix& dX, int i) override {
-    // 가중치(gW) 및 편향(gb) 기울기는 정상적으로 업데이트
-    Ops::MatMul2(X, dY, gW_);
 
-    // dX (입력에 대한 기울기) 계산 최적화
-    // 입력층(i=0)일 경우, 이전 층으로 전파할 오차가 없으므로 계산을 수행하지 않음.
-    if (i != 0) {
-        Ops::MatMul3(dY, W_, dX);
-    }
-}
-```
 <div style="page-break-after: always;"></div>
 
 #### 프로젝트 속성 변경
@@ -152,6 +140,7 @@ void Backward(const Matrix& X, const Matrix& dY, Matrix& dX, int i) override {
 
 <div style="page-break-after: always;"></div>
 
+## 실행결과 (전/후 훈련시간 비교)
 ### 행 단위 연산 변경
 - Before
 <img width="500" height="400" alt="Image" src="https://github.com/user-attachments/assets/5629467b-e76c-4bbe-b975-99c4bf3c70e7" />
