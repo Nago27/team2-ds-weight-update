@@ -81,7 +81,7 @@ void Backward(const Matrix& dOut) {
    - ```Ops::MatMul1```: $Y = X \times W$ (행 누적 + 희소성 데이터 스킵)
    - ```Ops::MatMul2```: $gW = X^T \times dY$ (행 누적 + 희소성 데이터 스킵)
    - ```Ops::MatMul3```: $dX = dY \times W^T$ (전치 행렬)
-3. 루프 구조 최적화: 
+3. 루프 구조 최적화 (병렬처리): 
    <br>레이어마다 행렬의 크기가 다르다는 것을 고려하여 각 함수의 내부에서도 if문으로 분기를 만들어 총 5가지의 루프를 구현하였습니다.<br>
    각 루프의 순서는 OpenMP(스레드 병렬)/AVX2(SIMD 병렬)를 활용한 병렬화 효율과 스레드 간의 Race Condition을 고려하여 결정하였습니다.
 4. Row-major 연속 접근 유지로 캐시 효율 극대화
@@ -91,6 +91,9 @@ void Backward(const Matrix& dOut) {
    <br>: 연산 과정에서 데이터가 0인 경우 연산을 생략(```continue```)하는 방식으로 데이터의 희소성을 활용하였습니다.
 6. 기타 연산 최적화
    <br>: ```AddRowBias```나 ```ReLUForward``` 등 다른 모든 행렬 연산에서도 행 단위 접근을 극대화하고 OpenMP, AVX2를 적절히 사용하였습니다.
+7. OpenMP & AVX 적용 방법
+   - C/C++ > 코드 생성 > 고급 명령 집합 사용 > 고급 벡터 확장 2(X86/X64)(/arxh:AVX2)
+   - C/C++ > 언어 > OpenMP 지원 > 예(/openmp)
 
 #### 불필요한 메모리 복사 최적화
 1. Sequential 클래스의 데이터 전달 구조 개선
@@ -118,7 +121,8 @@ void Backward(const Matrix& X, const Matrix& dY, Matrix& dX, int i) override {
 ```
 
 #### 프로젝트 속성 변경 (작성중)
-
+- C/C++ > 최적하 > 전체 프로그램 최적화 > 예(/GL)
+- C/C++ > 일반 > 디버그 정보 형식 > 프로그램 데이터베이스(/Zi)
 
 ## 실행 결과 (전/후 훈련시간 비교)
 ### 행 단위 연산 변경
