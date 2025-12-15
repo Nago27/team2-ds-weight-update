@@ -54,7 +54,7 @@ static void SliceBatch(const Matrix& X, const vector<int>& y, int beg, int end, 
     }
 }
 ```
-- Sequential.hpp의 forward(), backward()에서 레이어 간 데이터 전달시 전체 데이터의 깊은 복사를 반복적으로 수행하고 있어서 실제 연산보다 메모리 상에서 이동시키는 데 과도한 시간이 소요됩니다.
+- Sequential.hpp의 ```Forward()```, ```Backward()```에서 레이어 간 데이터 전달시 전체 데이터의 깊은 복사를 반복적으로 수행하고 있어서 실제 연산보다 메모리 상에서 이동시키는 데 과도한 시간이 소요됩니다.
 ```cpp
 void Forward(const Matrix& X, Matrix& out) {
    acts_.resize(layers_.size() + 1); acts_[0] = X; Matrix cur = X, nxt;
