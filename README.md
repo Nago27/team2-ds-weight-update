@@ -34,7 +34,7 @@ static void MatMul(const Matrix& X, const Matrix& W, Matrix& Y) {
 ### 불필요한 연산/복사 비용
 - Trainer.hpp의 Train과 SliceBatch에서 배치 구성시에 깊은 복사가 매 스텝 마다 발생되므로 복사량이 많이 누적되어 시간/메모리 대역폭을 낭비하게 됩니다.
 ```cpp
-// Train에서 셔플된 인덱스로 전체 데이터를 복사 하고 SliceBatch로 넘겨 함수 내부에서 한번 더 복사 수행
+// Train에서 셔플된 인덱스로 전체 데이터를 복사하고 SliceBatch로 넘겨 함수 내부에서 한번 더 복사 수행
 Matrix Xs(X.Rows(), X.Cols()); vector<int> ys = y;
 for (int i = 0; i < X.Rows(); ++i) {
 	for (int d = 0; d < X.Cols(); ++d) Xs(i, d) = X(idx[i], d);
