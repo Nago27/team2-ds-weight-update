@@ -6,9 +6,9 @@
 
 ## 문제점 파악
 ### 행 우선 접근 방식
-- Matrix.hpp에서는 행 우선(row_major) 저장 방식이지만, Ops.hpp, Dense.hpp 에서는 **열 단위**로 접근하여 캐시 미스가 발생합니다.
+- Matrix.hpp에서는 행 우선(row_major) 접근 방식이지만, Ops.hpp, Dense.hpp 에서는 **열 단위**로 접근하여 캐시 미스가 발생합니다.
 ```cpp
-// vector와 operator를 이용해 행 우선 연속 저장을 하는 Matrix
+// vector와 operator를 이용해 행 우선 연속 접근을 하는 Matrix
 class Matrix {
 	private:
 		i32 rows_ = 0, cols_ = 0;
