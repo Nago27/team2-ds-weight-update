@@ -4,81 +4,131 @@
 <div align="left">2022203092 이동현</div>
 <div align="left">2022203036 임동건</div>
 
-## 문제점 파악
-### 행 우선 접근 방식
-- Matrix.hpp에서는 행 우선(row_major) 접근 방식이지만, Ops.hpp, Dense.hpp 에서는 ‘열‘ 방향으로 접근하여 캐시 미스가 발생
-- $gW = X^T \times dY$, $gb = ∑rows(dy)$ 계산시 **열 방향**으로 누적되어 비연속 접근이 반복되고 있음
+## 1. 개발 환경 설정
+### 1) OpenMP & AVX2 활성화
+- C/C++ > 언어 > OpenMP 지원 > 예(/openmp)
+- C/C++ > 코드 생성 > 고급 명령 집합 사용 > 고급 벡터 확장 2(X86/X64)(/arch:AVX2)
 
-### 불필요한 연산/복사 비용
-- SliceBatch에서 현재 배치 구성시에 깊은 복사가 매 스텝 마다 발생되므로 복사량이 많이 누적되어 시간/메모리 대역폭을 잡아먹음
-- Sequential.hpp의 forward(), backward()에서 불필요한 복사 과정이 있다.
+### 2) 프로젝트 속성 변경 절차
+- C/C++ > 최적화 > 최대 최적화(속도 우선)(/O2)
+- C/C++ > 최적화 > 전체 프로그램 최적화 > 예(/GL)
+- C/C++ > 코드 생성 > 기본 런타임 검사 > 기본값
+- C/C++ > 일반 > 디버그 정보 형식 > 프로그램 데이터베이스(/Zi)
+
+## 2. 주요 구현 소스코드
+- 행 연산 최적화
 ```cpp
+// [Ops.hpp] MatMul1: Y = X * W 최적화 구현
+static void MatMul1(const Matrix& A, const Matrix& B, Matrix& C) {
+    int M = A.Rows(), K = A.Cols(), N = B.Cols();
+    C.Reset(M, N);
+    
+    // 행렬 크기(K, N)에 따른 루프 구조 분기
+    if (K < N) {
+#pragma omp parallel for // OpenMP 병렬화
+        for (int i = 0; i < M; ++i) {
+            const float* a = &A.Raw()[(size_t)i * K];
+            float* c = &C.Raw()[(size_t)i * N];
+            for (int j = 0; j < K; ++j) {
+                // Sparsity 활용 (0인 값 연산 생략)
+                if (a[j] == 0.0f) continue;
+
+                const __m256 a_vec = _mm256_set1_ps(a[j]);
+                const float* b = &B.Raw()[(size_t)j * N];
+                int k = 0;
+                // AVX2 SIMD 병렬 연산 (8 float 처리)
+                for (; k + 8 <= N; k += 8) {
+                    __m256 b_vec = _mm256_loadu_ps(b + k);
+                    __m256 c_vec = _mm256_loadu_ps(c + k);
+                    c_vec = _mm256_fmadd_ps(a_vec, b_vec, c_vec);
+                    _mm256_storeu_ps(c + k, c_vec);
+                }
+                for (; k < N; k++) c[k] += a[j] * b[k]; // 나머지 처리
+            }
+        }
+    } 
+    else {
+        // Row-major 연속 접근 유지를 위한 전치 행렬(Transpose) 생성
+        // B 행렬의 열 접근(Cache Miss 유발)을 행 접근으로 변환
+        Matrix BT(N, K);
+        #pragma omp parallel for
+        for (i32 i = 0; i < K; ++i) {
+            const f32* src = &B.Raw()[(size_t)i * N];
+            for (i32 j = 0; j < N; ++j) BT(j, i) = src[j];
+        }
+
+        #pragma omp parallel for
+        for (int i = 0; i < M; ++i) {
+            const float* a = &A.Raw()[(size_t)i * K];
+            float* c = &C.Raw()[(size_t)i * N];
+            for (int j = 0; j < N; ++j) {
+                __m256 sum_vec = _mm256_setzero_ps();
+                const float* b = &BT.Raw()[(size_t)j * K]; // 연속 메모리 접근(Cache Hit)
+                int k = 0;
+                for (; k + 8 <= K; k += 8) {
+                    __m256 a_vec = _mm256_loadu_ps(a + k);
+                    __m256 b_vec = _mm256_loadu_ps(b + k);
+                    sum_vec = _mm256_fmadd_ps(a_vec, b_vec, sum_vec);
+                }
+                // ... (Reduction 및 나머지 처리 생략)
+            }
+        }
+    }
+}
+```
+- 메모리 복사 최적화 (Sequential & SliceBatch)
+```cpp
+// [Sequential.hpp] 
+// 불필요한 메모리 복사 제거
 void Forward(const Matrix& X, Matrix& out) {
-   acts_.resize(layers_.size() + 1);
-   acts_[0] = X;
-   Matrix cur = X, nxt;
-   for (size_t i = 0; i < layers_.size(); ++i) {
-      layers_[i]->Forward(cur, nxt);
-      acts_[i + 1] = nxt;
-      cur = acts_[i + 1];
-   }
-   out = acts_.back();
+  acts_.resize(layers_.size() + 1);
+  acts_[0] = X;
+
+  for (size_t i = 0; i < layers_.size(); ++i) {
+    layers_[i]->Forward(acts_[i], acts_[i + 1]);
+  }
+  out = acts_.back();
 }
 void Backward(const Matrix& dOut) {
-   Matrix cur_d = dOut, prev_d;
-   for (int i = static_cast<int>(layers_.size()) - 1; i >= 0; --i) {
-      layers_[i]->Backward(acts_[i], cur_d, prev_d);
-      cur_d = prev_d;
-   }
+  d_acts_.resize(acts_.size());
+  d_acts_.back() = dOut;
+  for (int i = static_cast<int>(layers_.size()) - 1; i >= 0; --i) {
+    layers_[i]->Backward(acts_[i], d_acts_[i + 1], d_acts_[i], i);
+  }
+}
+
+// [Trainer.hpp] SliceBatch
+static void SliceBatch(const Matrix& X, const vector<int>& y, const vector<int>& idx, int beg, int end, Matrix& Xb, vector<int>& yb) {
+    const int N = end - beg; const int D = X.Cols();
+    if (Xb.Rows() != N || Xb.Cols() != D) Xb.Reset(N, D);
+    yb.resize(N);
+    float* xb = &Xb.Raw()[0];
+    const float* x = &X.Raw()[0];
+
+    #pragma omp parallel for
+    for (int i = 0; i < N; ++i) {
+        int actual_row_idx = idx[beg + i];
+        const float* src_row = x + (size_t)actual_row_idx * D;
+        float* dst_row = xb + (size_t)i * D;
+        // [Optimization] memcpy로 행 단위 고속 복사
+        memcpy(dst_row, src_row, D * sizeof(float));
+        yb[i] = y[actual_row_idx];
+    }
 }
 ```
-- 불필요한 연산 dX
+- 불필요한 dX 연산 삭제
 ```cpp
+// [Dense.hpp] Backward
+void Backward(const Matrix& X, const Matrix& dY, Matrix& dX, int i) override {
+    // 1. gW, gb 계산 (생략)
+    Ops::MatMul2(X, dY, gW_);
+    
+    // ... (gb 계산 및 병렬화 로직)
+
+    // 2. dX (입력 기울기) 계산 최적화
+    // 입력층(i=0)일 경우 이전 층으로 전파할 필요가 없으므로 연산 생략
+    if (i != 0) {
+        Ops::MatMul3(dY, W_, dX);
+    }
+}
 ```
-
-## 문제를 해결하기 위한 자료구조    
-- 기존 Matrix(row_major)의 사용 방식을 행 단위 연산으로 변경 (자료구조 활용 변경)
-
-## 주요 구현 내용
-#### 행 연산 변경 및 OpenMP & AVX 적용
-- Ops::MatMul1: $Y = X \times W$ (행 누적 + 희소성 데이터 스킵)
-- Ops::MatMul2: $gW = X^T * dY$ (행 누적 + 희소성 데이터 스킵)
-- Ops::MatMul3: $dX = dY * W^T$ (전치 행렬)
-- AddRowBias 수정
-- LeLU Forward/Backward 연산
-
-#### 불필요한 메모리 복사 최적화
-
-#### dX 연산 삭제 (Dense.hpp)
-
-#### 프로젝트 속성 변경
-
-
-## 실행 결과 (전/후 훈련시간 비교)
-### 행 단위 연산 변경
-- Before
-- After
-
-### 불필요한 dX 연산 삭제/메모리 복사 최적화
-- Before
-- After
-
-### OpenMP, AVX
-- Before
-- After
-
-### 프로젝트 속성 변경
-- Before
-- After
-
-## 팀원들의 역할
-- 강은우(조장): 자료조사, 행 단위 연산 변경 구현
-- 김건우: 자료조사(Eigen 외부 라이브러리 분석), 메모리 복사 최적화
-- 이동현: 자료조사(Eigen 외부 라이브러리 분석), OpenMP 및 AVX 적용 및 구현
-- 임동건: 자료조사, GitHub 협업 개발 환경 구축, 중간발표 PPT 및 최종보고서 작성
-  
-## 진행 과정 및 일정
-- 3~5주차: 자료조사
-- 6~11주차: 행 연산 변경, 데이터 복사 최적화
-- 12~14주차: OpenMP와 AVX 적용, 프로젝트 속성 변경
-- 15주차: 최종 보고서 작성
