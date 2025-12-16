@@ -78,7 +78,7 @@ static void MatMul1(const Matrix& A, const Matrix& B, Matrix& C) {
 ```
 - 메모리 복사 최적화 (Sequential & SliceBatch)
 ```cpp
-// [Sequential.hpp] Forward: 데이터 전파 시 불필요한 깊은 복사 제거
+// [Sequential.hpp] 
 // 불필요한 메모리 복사 제거
 void Forward(const Matrix& X, Matrix& out) {
   acts_.resize(layers_.size() + 1);
